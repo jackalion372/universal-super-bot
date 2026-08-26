@@ -1,5 +1,6 @@
 ﻿import os
 import re
+import html
 import asyncio
 from aiogram import Router, F, Bot
 from aiogram.enums import ChatAction
@@ -17,7 +18,7 @@ async def keep_action(bot: Bot, chat_id: int, action: ChatAction, stop_event: as
             await bot.send_chat_action(chat_id=chat_id, action=action)
         except Exception:
             pass
-        await asyncio.sleep(4)
+        await asyncio.sleep(3)
 
 @router.message(F.text.regexp(URL_REGEX))
 async def handle_url_message(message: Message, bot: Bot):
@@ -27,7 +28,7 @@ async def handle_url_message(message: Message, bot: Bot):
     stop_event = asyncio.Event()
     action_task = asyncio.create_task(keep_action(bot, message.chat.id, ChatAction.RECORD_VIDEO, stop_event))
     
-    status_msg = await message.answer(f"⏳ **{platform.capitalize()} havolasi yuklanmoqda...**", parse_mode="Markdown")
+    status_msg = await message.answer(f"⏳ <b>{platform.capitalize()}</b> havolasi yuklanmoqda...", parse_mode="HTML")
     
     try:
         result = await download_media(url, extract_audio=False)
@@ -36,13 +37,14 @@ async def handle_url_message(message: Message, bot: Bot):
         await action_task
         
     if not result.get("success"):
-        await status_msg.edit_text(f"❌ **Kechirasiz, media yuklab olinmadi.**\n\nSababi: {result.get('error', 'Noma''lum xatolik')}")
+        await status_msg.edit_text(f"❌ <b>Kechirasiz, media yuklab olinmadi.</b>\n\nSababi: {html.escape(result.get('error', 'Noma xatolik'))}", parse_mode="HTML")
         return
         
     file_path = result["file_path"]
     is_audio = result.get("is_audio", False)
     is_image = result.get("is_image", False)
-    title = result.get("title", "Media")
+    raw_title = result.get("title", "Media")
+    safe_title = html.escape(raw_title)
     
     upload_stop = asyncio.Event()
     up_action = ChatAction.UPLOAD_AUDIO if is_audio else (ChatAction.UPLOAD_PHOTO if is_image else ChatAction.UPLOAD_VIDEO)
@@ -50,19 +52,25 @@ async def handle_url_message(message: Message, bot: Bot):
     
     try:
         media_file = FSInputFile(file_path)
-        caption = f"🎬 **{title}**\n\n🤖 @Mr_nafi_bot orqali yuklandi"
+        caption = f"🎬 <b>{safe_title}</b>\n\n🤖 @Mr_nafi_bot orqali yuklandi"
         
         if is_audio:
-            await message.answer_audio(audio=media_file, caption=caption, parse_mode="Markdown")
+            await message.answer_audio(audio=media_file, caption=caption, parse_mode="HTML")
         elif is_image:
-            await message.answer_photo(photo=media_file, caption=caption, parse_mode="Markdown")
+            await message.answer_photo(photo=media_file, caption=caption, parse_mode="HTML")
         else:
-            await message.answer_video(video=media_file, caption=caption, parse_mode="Markdown")
+            await message.answer_video(video=media_file, caption=caption, parse_mode="HTML")
             
         log_stat(message.from_user.id, "download", platform)
         await status_msg.delete()
     except Exception as e:
-        await status_msg.edit_text(f"❌ Faylni yuborishda xatolik: {e}")
+        # Retry document mode if video payload fails
+        try:
+            doc_file = FSInputFile(file_path)
+            await message.answer_document(document=doc_file, caption=f"📄 {safe_title}\n\n🤖 @Mr_nafi_bot", parse_mode="HTML")
+            await status_msg.delete()
+        except Exception as e2:
+            await status_msg.edit_text(f"❌ Faylni yuborishda xatolik: {html.escape(str(e))}", parse_mode="HTML")
     finally:
         upload_stop.set()
         await up_task

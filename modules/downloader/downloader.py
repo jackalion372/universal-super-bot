@@ -2,13 +2,24 @@
 import re
 import asyncio
 import uuid
+import shutil
+import html
 from pathlib import Path
 import yt_dlp
 import aiohttp
-import imageio_ffmpeg
 from core.config import DOWNLOADS_DIR, logger
 
-FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+# System FFmpeg birinchi tekshiriladi
+SYSTEM_FFMPEG = shutil.which("ffmpeg")
+if SYSTEM_FFMPEG:
+    FFMPEG_EXE = SYSTEM_FFMPEG
+else:
+    try:
+        import imageio_ffmpeg
+        FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        FFMPEG_EXE = "ffmpeg"
+
 FFMPEG_DIR = str(Path(FFMPEG_EXE).parent)
 if FFMPEG_DIR not in os.environ.get("PATH", ""):
     os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
@@ -36,19 +47,24 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
     file_id = uuid.uuid4().hex[:10]
     out_template = str(DOWNLOADS_DIR / f"{file_id}_%(title).50s.%(ext)s")
     
-    # Maksimal tezlik uchun optimallashtirilgan parametrlar
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
+
     ydl_opts = {
         'outtmpl': out_template,
         'quiet': True,
         'no_warnings': True,
-        'ffmpeg_location': FFMPEG_EXE,
+        'ffmpeg_location': FFMPEG_EXE if SYSTEM_FFMPEG else FFMPEG_EXE,
         'noplaylist': True,
-        'max_filesize': 50 * 1024 * 1024,
-        'concurrent_fragment_downloads': 16, # Ko'p oqimli tezkor yuklash
+        'max_filesize': 49 * 1024 * 1024, # 49MB max Telegram bot limit
+        'concurrent_fragment_downloads': 8,
         'buffersize': 1024 * 1024,
-        'http_chunk_size': 10485760,
         'nocheckcertificate': True,
-        'socket_timeout': 10,
+        'socket_timeout': 15,
+        'http_headers': headers,
     }
 
     if extract_audio:
@@ -59,7 +75,8 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
             'preferredquality': '192',
         }]
     else:
-        ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/b/best'
+        # Har qanday platforma uchun universal format fallbacks
+        ydl_opts['format'] = 'bestvideo[filesize<48M]+bestaudio/best[filesize<48M]/best/b'
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -71,10 +88,11 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
             
             downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
             if not downloaded_files:
-                thumbnail = info.get('thumbnail')
+                # Foto yoki Thumbnail yuklash (Pinterest/Instagram Rasm postlar)
+                thumbnail = info.get('thumbnail') or info.get('url')
                 if thumbnail:
                     import requests
-                    resp = requests.get(thumbnail, timeout=5)
+                    resp = requests.get(thumbnail, headers=headers, timeout=10)
                     if resp.status_code == 200:
                         img_path = str(DOWNLOADS_DIR / f"{file_id}_image.jpg")
                         with open(img_path, 'wb') as f:
@@ -88,7 +106,7 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
                             "is_image": True,
                             "platform": detect_platform(url)
                         }
-                return {"success": False, "error": "Fayl yuklab olinmadi"}
+                return {"success": False, "error": "Media fayli topilmadi yoki hajmi 50MB dan katta."}
             
             filepath = downloaded_files[0]
             is_audio = filepath.suffix.lower() in ['.mp3', '.m4a', '.aac', '.ogg', '.wav'] or extract_audio
@@ -105,4 +123,27 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
             }
     except Exception as e:
         logger.error(f"Download error for {url}: {e}")
-        return {"success": False, "error": str(e)}
+        # Takroriy urinish fallback format
+        if not extract_audio:
+            try:
+                ydl_opts['format'] = 'b/best'
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl2:
+                    info = ydl2.extract_info(url, download=True)
+                    if 'entries' in info and info['entries']:
+                        info = info['entries'][0]
+                    title = info.get('title', 'Media')
+                    downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
+                    if downloaded_files:
+                        filepath = downloaded_files[0]
+                        return {
+                            "success": True,
+                            "file_path": str(filepath),
+                            "title": title,
+                            "duration": info.get('duration', 0),
+                            "is_audio": False,
+                            "is_image": False,
+                            "platform": detect_platform(url)
+                        }
+            except Exception as e2:
+                pass
+        return {"success": False, "error": f"Yuklab olishda xatolik yuz berdi: {str(e)[:100]}"}
