@@ -4,12 +4,12 @@ import asyncio
 import uuid
 import shutil
 import html
+import requests
+from bs4 import BeautifulSoup
 from pathlib import Path
 import yt_dlp
-import aiohttp
 from core.config import DOWNLOADS_DIR, logger
 
-# System FFmpeg birinchi tekshiriladi
 SYSTEM_FFMPEG = shutil.which("ffmpeg")
 if SYSTEM_FFMPEG:
     FFMPEG_EXE = SYSTEM_FFMPEG
@@ -49,7 +49,7 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': '*/*',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
     }
 
@@ -57,13 +57,13 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
         'outtmpl': out_template,
         'quiet': True,
         'no_warnings': True,
-        'ffmpeg_location': FFMPEG_EXE if SYSTEM_FFMPEG else FFMPEG_EXE,
+        'ffmpeg_location': FFMPEG_EXE,
         'noplaylist': True,
-        'max_filesize': 49 * 1024 * 1024, # 49MB max Telegram bot limit
+        'max_filesize': 49 * 1024 * 1024,
         'concurrent_fragment_downloads': 8,
         'buffersize': 1024 * 1024,
         'nocheckcertificate': True,
-        'socket_timeout': 15,
+        'socket_timeout': 10,
         'http_headers': headers,
     }
 
@@ -75,75 +75,144 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
             'preferredquality': '192',
         }]
     else:
-        # Har qanday platforma uchun universal format fallbacks
         ydl_opts['format'] = 'bestvideo[filesize<48M]+bestaudio/best[filesize<48M]/best/b'
 
+    # 1-Bosqich: yt-dlp yordamida yuklab olishga urinish
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            if 'entries' in info and info['entries']:
-                info = info['entries'][0]
-            title = info.get('title', 'Media')
-            duration = info.get('duration', 0)
-            
-            downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
-            if not downloaded_files:
-                # Foto yoki Thumbnail yuklash (Pinterest/Instagram Rasm postlar)
-                thumbnail = info.get('thumbnail') or info.get('url')
-                if thumbnail:
-                    import requests
-                    resp = requests.get(thumbnail, headers=headers, timeout=10)
-                    if resp.status_code == 200:
-                        img_path = str(DOWNLOADS_DIR / f"{file_id}_image.jpg")
-                        with open(img_path, 'wb') as f:
-                            f.write(resp.content)
-                        return {
-                            "success": True,
-                            "file_path": img_path,
-                            "title": title,
-                            "duration": 0,
-                            "is_audio": False,
-                            "is_image": True,
-                            "platform": detect_platform(url)
-                        }
-                return {"success": False, "error": "Media fayli topilmadi yoki hajmi 50MB dan katta."}
-            
-            filepath = downloaded_files[0]
-            is_audio = filepath.suffix.lower() in ['.mp3', '.m4a', '.aac', '.ogg', '.wav'] or extract_audio
-            is_image = filepath.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']
-            
-            return {
-                "success": True,
-                "file_path": str(filepath),
-                "title": title,
-                "duration": duration,
-                "is_audio": is_audio,
-                "is_image": is_image,
-                "platform": detect_platform(url)
-            }
+            if info:
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
+                title = info.get('title', 'Media')
+                duration = info.get('duration', 0)
+                
+                downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
+                if downloaded_files:
+                    filepath = downloaded_files[0]
+                    is_audio = filepath.suffix.lower() in ['.mp3', '.m4a', '.aac', '.ogg', '.wav'] or extract_audio
+                    is_image = filepath.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']
+                    return {
+                        "success": True,
+                        "file_path": str(filepath),
+                        "title": title,
+                        "duration": duration,
+                        "is_audio": is_audio,
+                        "is_image": is_image,
+                        "platform": detect_platform(url)
+                    }
     except Exception as e:
-        logger.error(f"Download error for {url}: {e}")
-        # Takroriy urinish fallback format
-        if not extract_audio:
-            try:
-                ydl_opts['format'] = 'b/best'
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl2:
-                    info = ydl2.extract_info(url, download=True)
-                    if 'entries' in info and info['entries']:
-                        info = info['entries'][0]
-                    title = info.get('title', 'Media')
-                    downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
-                    if downloaded_files:
-                        filepath = downloaded_files[0]
-                        return {
-                            "success": True,
-                            "file_path": str(filepath),
-                            "title": title,
-                            "duration": info.get('duration', 0),
-                            "is_audio": False,
-                            "is_image": False,
-                            "platform": detect_platform(url)
-                        }
-            except Exception as e2:
-                pass
-        return {"success": False, "error": f"Yuklab olishda xatolik yuz berdi: {str(e)[:100]}"}
+        logger.warning(f"yt-dlp initial attempt failed for {url}: {e}")
+
+    # 2-Bosqich: Agar yt-dlp foto yoki video berolmasa, Web Scraper Fallback
+    fallback_res = _scrape_fallback(url, file_id, headers)
+    if fallback_res.get("success"):
+        return fallback_res
+
+    # 3-Bosqich: yt-dlp sodda fallback format bilan qayta urinish
+    try:
+        ydl_opts['format'] = 'b/best'
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl2:
+            info = ydl2.extract_info(url, download=True)
+            if info:
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
+                downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
+                if downloaded_files:
+                    filepath = downloaded_files[0]
+                    return {
+                        "success": True,
+                        "file_path": str(filepath),
+                        "title": info.get('title', 'Media'),
+                        "duration": info.get('duration', 0),
+                        "is_audio": False,
+                        "is_image": False,
+                        "platform": detect_platform(url)
+                    }
+    except Exception:
+        pass
+
+    return {
+        "success": False,
+        "error": "Ushbu havola bo'yicha media topilmadi. Havola to'g'ri va ochiq profilga tegishli ekanligini tekshiring."
+    }
+
+def _scrape_fallback(url: str, file_id: str, headers: dict) -> dict:
+    """HTML metadata scraper Pinterest, Instagram va boshqalar uchun"""
+    try:
+        resp = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        if resp.status_code != 200:
+            return {"success": False}
+
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Sarlavhani topish
+        title = "Media"
+        if soup.title and soup.title.string:
+            title = soup.title.string.strip()[:60]
+            
+        # 1. Video meta teglarini tekshirish (og:video, og:video:secure_url)
+        video_url = None
+        for meta in soup.find_all('meta'):
+            prop = meta.get('property', '') or meta.get('name', '')
+            if prop in ['og:video', 'og:video:secure_url', 'og:video:url', 'twitter:player:stream']:
+                content = meta.get('content')
+                if content and content.startswith('http'):
+                    video_url = content
+                    break
+                    
+        if video_url:
+            v_resp = requests.get(video_url, headers=headers, timeout=15, stream=True)
+            if v_resp.status_code == 200:
+                v_path = str(DOWNLOADS_DIR / f"{file_id}_video.mp4")
+                with open(v_path, 'wb') as f:
+                    for chunk in v_resp.iter_content(chunk_size=1024*1024):
+                        f.write(chunk)
+                return {
+                    "success": True,
+                    "file_path": v_path,
+                    "title": title,
+                    "duration": 0,
+                    "is_audio": False,
+                    "is_image": False,
+                    "platform": detect_platform(url)
+                }
+
+        # 2. Foto meta teglarini tekshirish (og:image, twitter:image)
+        image_url = None
+        for meta in soup.find_all('meta'):
+            prop = meta.get('property', '') or meta.get('name', '')
+            if prop in ['og:image', 'twitter:image', 'og:image:secure_url']:
+                content = meta.get('content')
+                if content and content.startswith('http'):
+                    image_url = content
+                    break
+                    
+        if image_url:
+            # Pinterest original HD rasmini olish
+            if "pinimg.com" in image_url:
+                image_url = re.sub(r'/(?:736x|564x|474x|236x)/', '/originals/', image_url)
+                
+            img_resp = requests.get(image_url, headers=headers, timeout=10)
+            if img_resp.status_code == 200 and len(img_resp.content) > 1000:
+                ext = ".jpg"
+                if "png" in image_url.lower():
+                    ext = ".png"
+                elif "webp" in image_url.lower():
+                    ext = ".webp"
+                img_path = str(DOWNLOADS_DIR / f"{file_id}_image{ext}")
+                with open(img_path, 'wb') as f:
+                    f.write(img_resp.content)
+                return {
+                    "success": True,
+                    "file_path": img_path,
+                    "title": title,
+                    "duration": 0,
+                    "is_audio": False,
+                    "is_image": True,
+                    "platform": detect_platform(url)
+                }
+    except Exception as e:
+        logger.warning(f"Scrape fallback error: {e}")
+        
+    return {"success": False}
