@@ -1,6 +1,7 @@
 ﻿import asyncio
 import os
 import time
+import requests
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -26,6 +27,18 @@ async def start_health_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     logger.info(f"Render Health Server {port}-portda ishga tushdi.")
+
+async def keep_alive_self_ping():
+    """Render Free serverini uyquga ketishdan asrash uchun har 5 daqiqada ping"""
+    render_url = os.getenv("RENDER_EXTERNAL_URL", "https://universal-super-bot.onrender.com")
+    while True:
+        await asyncio.sleep(300) # 5 daqiqa
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, requests.get, render_url)
+            logger.info("Render Keep-Alive ping yuborildi (24/7 Faol).")
+        except Exception:
+            pass
 
 async def setup_bot_commands(bot: Bot):
     commands = [
@@ -70,8 +83,8 @@ async def main():
     init_db()
     logger.info("Ma'lumotlar bazasi tayyor.")
 
-    # Render Free Health Server
     await start_health_server()
+    asyncio.create_task(keep_alive_self_ping())
 
     session = AiohttpSession()
     bot = Bot(
@@ -92,7 +105,7 @@ async def main():
 
     asyncio.create_task(periodic_cleanup())
 
-    logger.info("🚀 Universal Super Bot ishga tushdi!")
+    logger.info("🚀 Universal Super Bot ishga tushdi (Anti-Sleep Keep-Alive)!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, polling_timeout=20)
 
