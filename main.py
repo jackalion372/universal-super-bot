@@ -1,7 +1,7 @@
 ﻿import asyncio
 import os
 import time
-import aiohttp
+from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeDefault
@@ -11,6 +11,21 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from core.config import BOT_TOKEN, DOWNLOADS_DIR, TEMP_DIR, logger
 from core.database import init_db
 from handlers import start, admin_h, downloader_h, shazam_h, ai_h, tools_h
+
+# Render Free Web Service Health Check Handler
+async def handle_health_check(request):
+    return web.Response(text="Universal Super Bot is Running Live 24/7!")
+
+async def start_health_server():
+    port = int(os.getenv("PORT", 8080))
+    app = web.Application()
+    app.router.add_get("/", handle_health_check)
+    app.router.add_get("/health", handle_health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info(f"Render Health Server {port}-portda ishga tushdi.")
 
 async def setup_bot_commands(bot: Bot):
     commands = [
@@ -55,8 +70,10 @@ async def main():
     init_db()
     logger.info("Ma'lumotlar bazasi tayyor.")
 
+    # Render Free Health Server
+    await start_health_server()
+
     session = AiohttpSession()
-    
     bot = Bot(
         token=BOT_TOKEN,
         session=session,
@@ -64,10 +81,8 @@ async def main():
     )
     dp = Dispatcher()
 
-    # Buyruqlar menyusini Telegramga kiritish
     await setup_bot_commands(bot)
 
-    # Routerni ulash
     dp.include_router(admin_h.router)
     dp.include_router(start.router)
     dp.include_router(tools_h.router)
