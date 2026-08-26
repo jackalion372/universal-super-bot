@@ -53,12 +53,76 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
         'Accept-Language': 'en-US,en;q=0.9',
     }
 
-    # 1. Cobalt / Fast API Fallback (Instagram & YouTube & TikTok uchun o'ta ishonchli API)
-    api_res = _download_via_public_api(url, file_id, extract_audio)
-    if api_res.get("success"):
-        return api_res
+    # Avval video haqidagi informatsiyani (davomiyligi, hajmi va stream havolasini) tezkor olish
+    info = None
+    try:
+        ydl_info_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'http_headers': headers,
+            'extractor_args': {'youtube': ['player_client=android,web']}
+        }
+        with yt_dlp.YoutubeDL(ydl_info_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info and 'entries' in info and info['entries']:
+                info = info['entries'][0]
+    except Exception as e:
+        logger.warning(f"Info extract warning: {e}")
 
-    # 2. yt-dlp parametri (Instagram va YouTube uchun maxsus extractor_args)
+    # Agar 2 soatlik katta video bo'lsa yoki 50MB dan oshib ketishi kutilsa
+    if info:
+        title = info.get('title', 'YouTube Video')
+        duration = info.get('duration', 0)
+        direct_url = info.get('url') or (info.get('formats')[-1].get('url') if info.get('formats') else None)
+
+        # 2 soatlik (uzun) video uchun direct stream havolasini tayyorlash
+        if duration > 1800 or info.get('filesize', 0) > 49 * 1024 * 1024:
+            # MP3 variantini yuklab ko'rish
+            if extract_audio:
+                ydl_audio_opts = {
+                    'outtmpl': out_template,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'ffmpeg_location': FFMPEG_EXE,
+                    'noplaylist': True,
+                    'format': 'bestaudio/best',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '128',
+                    }]
+                }
+                try:
+                    with yt_dlp.YoutubeDL(ydl_audio_opts) as ydl_a:
+                        ydl_a.download([url])
+                        downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
+                        if downloaded_files:
+                            filepath = downloaded_files[0]
+                            if os.path.getsize(filepath) <= 49 * 1024 * 1024:
+                                return {
+                                    "success": True,
+                                    "file_path": str(filepath),
+                                    "title": title,
+                                    "duration": duration,
+                                    "is_audio": True,
+                                    "is_image": False,
+                                    "platform": detect_platform(url)
+                                }
+                except Exception:
+                    pass
+
+            # Uzun video uchun to'g meva-to'g'ri yuklab olish havolasini qaytarish
+            return {
+                "success": True,
+                "is_large": True,
+                "title": title,
+                "duration": duration,
+                "direct_url": direct_url or url,
+                "platform": detect_platform(url)
+            }
+
+    # Standard hajmdagi videolar uchun oddiy yuklash
     ydl_opts = {
         'outtmpl': out_template,
         'quiet': True,
@@ -84,7 +148,7 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
             'preferredquality': '192',
         }]
     else:
-        ydl_opts['format'] = 'bestvideo[filesize<48M]+bestaudio/best[filesize<48M]/best/b'
+        ydl_opts['format'] = 'bestvideo[filesize<48M]+bestaudio/best[filesize<48M]/best[filesize<48M]/b'
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -106,33 +170,28 @@ def _sync_download(url: str, extract_audio: bool = False) -> dict:
                         "platform": detect_platform(url)
                     }
     except Exception as e:
-        logger.warning(f"yt-dlp failed for {url}: {e}")
+        logger.warning(f"yt-dlp download failed: {e}")
 
-    # 3. HTML Scraper Fallback
+    # Public API Fallback
+    api_res = _download_via_public_api(url, file_id, extract_audio)
+    if api_res.get("success"):
+        return api_res
+
+    # Scrape Fallback
     fallback_res = _scrape_fallback(url, file_id, headers)
     if fallback_res.get("success"):
         return fallback_res
 
     return {
         "success": False,
-        "error": "Media fayli yuklab olinmadi. Iltimos, havola to'g'riligini va profil ochiq ekanligini tekshiring."
+        "error": "Media fayli yuklab olinmadi. Iltimos, havola to'g'riligini tekshiring."
     }
 
 def _download_via_public_api(url: str, file_id: str, extract_audio: bool) -> dict:
-    """Instagram va YouTube uchun tezkor zaxira API"""
     try:
-        # SnapInsta / Cobalt API request
         api_url = "https://co.wuk.sh/api/json"
-        payload = {
-            "url": url,
-            "isAudioOnly": extract_audio,
-            "aFormat": "mp3"
-        }
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0"
-        }
+        payload = {"url": url, "isAudioOnly": extract_audio, "aFormat": "mp3"}
+        headers = {"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
         res = requests.post(api_url, json=payload, headers=headers, timeout=8)
         if res.status_code == 200:
             data = res.json()
@@ -167,7 +226,6 @@ def _scrape_fallback(url: str, file_id: str, headers: dict) -> dict:
         soup = BeautifulSoup(resp.text, 'html.parser')
         title = soup.title.string.strip()[:60] if soup.title and soup.title.string else "Media"
 
-        # Video scraping
         video_url = None
         for meta in soup.find_all('meta'):
             prop = meta.get('property', '') or meta.get('name', '')
@@ -194,7 +252,6 @@ def _scrape_fallback(url: str, file_id: str, headers: dict) -> dict:
                     "platform": detect_platform(url)
                 }
 
-        # Foto scraping
         image_url = None
         for meta in soup.find_all('meta'):
             prop = meta.get('property', '') or meta.get('name', '')
