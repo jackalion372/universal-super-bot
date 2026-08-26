@@ -1,0 +1,12 @@
+﻿version: '3.8'
+
+services:
+  superbot:
+    build: .
+    container_name: universal_super_bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./downloads:/app/downloads
