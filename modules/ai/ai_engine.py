@@ -1,12 +1,17 @@
 import os
 import io
 from pathlib import Path
+from core.config import GEMINI_API_KEY, logger
+from core.database import save_ai_message, get_ai_history, clear_ai_history
+
+
 try:
     import google.generativeai as genai
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
 except Exception as e:
     genai = None
+
 
 
 GEMINI_SYSTEM_INSTRUCTION = """
