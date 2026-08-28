@@ -85,11 +85,42 @@ def init_db():
     )
     """)
 
-    # Dastlabki sozlama (Majburiy obuna: o'chiq)
+    # 🚀 File Cache Jadvali (0.01 soniyalik tezkor file_id keshlash)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS file_cache (
+        url_hash TEXT PRIMARY KEY,
+        file_id TEXT,
+        file_type TEXT,
+        caption TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('force_sub', '0')")
     
     conn.commit()
     conn.close()
+
+def save_cached_file(url_hash: str, file_id: str, file_type: str, caption: str = ""):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO file_cache (url_hash, file_id, file_type, caption) VALUES (?, ?, ?, ?)", (url_hash, file_id, file_type, caption))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+def get_cached_file(url_hash: str):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_id, file_type, caption FROM file_cache WHERE url_hash = ?", (url_hash,))
+        row = cursor.fetchone()
+        conn.close()
+        return row
+    except Exception:
+        return None
 
 def upsert_user(user_id: int, first_name: str, last_name: str, username: str):
     conn = get_connection()
@@ -149,8 +180,6 @@ def log_stat(user_id: int, action_type: str, details: str = ""):
     cursor.execute("INSERT INTO stats (user_id, action_type, details) VALUES (?, ?, ?)", (user_id, action_type, details))
     conn.commit()
     conn.close()
-
-# ==================== ADMIN & CHANNELS & SETTINGS ====================
 
 def get_setting(key: str, default: str = "") -> str:
     conn = get_connection()
@@ -230,25 +259,18 @@ def get_all_user_ids():
 def get_detailed_stats():
     conn = get_connection()
     cursor = conn.cursor()
-    
     cursor.execute("SELECT COUNT(*) as total FROM users")
     total_users = cursor.fetchone()["total"]
-    
     cursor.execute("SELECT COUNT(*) as today FROM users WHERE date(created_at) = date('now')")
     today_users = cursor.fetchone()["today"]
-    
     cursor.execute("SELECT COUNT(*) as active FROM users WHERE last_active >= datetime('now', '-1 day')")
     active_users = cursor.fetchone()["active"]
-    
-    cursor.execute("SELECT COUNT(*) as total_dl FROM stats WHERE action_type = 'download'")
+    cursor.execute("SELECT COUNT(*) as total_dl FROM stats WHERE action_type LIKE 'download%'")
     total_downloads = cursor.fetchone()["total_dl"]
-    
     cursor.execute("SELECT COUNT(*) as total_ai FROM stats WHERE action_type LIKE 'ai_%'")
     total_ai = cursor.fetchone()["total_ai"]
-    
     cursor.execute("SELECT COUNT(*) as total_shazam FROM stats WHERE action_type LIKE 'shazam_%' OR action_type = 'music_search'")
     total_shazam = cursor.fetchone()["total_shazam"]
-    
     conn.close()
     return {
         "total_users": total_users,

@@ -1,6 +1,7 @@
 ﻿import os
 import re
 import html
+import hashlib
 import asyncio
 from aiogram import Router, F, Bot
 from aiogram.enums import ChatAction, ChatType
@@ -10,7 +11,7 @@ from aiogram.types import (
     InputMediaPhoto, InputMediaVideo
 )
 from modules.downloader.fast_downloader import fast_download_media, detect_platform
-from core.database import log_stat
+from core.database import log_stat, get_cached_file, save_cached_file
 
 router = Router()
 
@@ -32,10 +33,28 @@ async def handle_url_message(message: Message, bot: Bot):
         
     url = url_match.group(0)
     platform = detect_platform(url)
-    
+    url_hash = hashlib.md5(url.encode()).hexdigest()
+
+    # 🚀 0.01 SONIYALIK TELEGRAM FILE_ID KESH (Instant Telegram Caching)
+    cached = get_cached_file(url_hash)
+    if cached:
+        cached_file_id = cached["file_id"]
+        cached_type = cached["file_type"]
+        caption = cached["caption"] or f"🎬 🤖 @Mr_nafi_bot orqali yuklandi"
+        try:
+            if cached_type == "video":
+                await message.answer_video(video=cached_file_id, caption=caption, parse_mode="HTML")
+            elif cached_type == "audio":
+                await message.answer_audio(audio=cached_file_id, caption=caption, parse_mode="HTML")
+            elif cached_type == "photo":
+                await message.answer_photo(photo=cached_file_id, caption=caption, parse_mode="HTML")
+            log_stat(message.from_user.id, "download_cache", platform)
+            return
+        except Exception:
+            pass # Keshlangan file_id eskorgan bo'lsa qayta yuklanadi
+
     stop_event = asyncio.Event()
     action_task = asyncio.create_task(keep_action(bot, message.chat.id, ChatAction.RECORD_VIDEO, stop_event))
-    
     status_msg = await message.answer(f"⚡️ <b>{platform.capitalize()}</b> havolasi uzatilmoqda...", parse_mode="HTML")
     
     try:
@@ -71,21 +90,16 @@ async def handle_url_message(message: Message, bot: Bot):
             except Exception as e_album:
                 logger.warning(f"MediaGroup error: {e_album}")
 
-    # 2. Katta (2 soatlik) videolar uchun to'g'ridan-to'g'ri HD havola
+    # 2. Katta (2 soatlik) videolar uchun HD havola
     if result.get("is_large"):
         safe_title = html.escape(result.get("title", "Video"))
         direct_url = result.get("direct_url", url)
-        
         caption_text = (
             f"🎬 <b>{safe_title}</b>\n\n"
             f"⚠️ <b>Ushbu video hajmi va davomiyligi juda katta (2 soat+).</b>\n"
             f"Telegram cheklovi (50MB) tufayli quyidagi tugmani bosib <b>HD formatda</b> to'g'ridan-to'g'ri yuklab olishingiz mumkin:"
         )
-        
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📥 HD Videoni Yuklab Olish", url=direct_url)]
-        ])
-        
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📥 HD Videoni Yuklab Olish", url=direct_url)]])
         await message.answer(caption_text, parse_mode="HTML", reply_markup=kb)
         log_stat(message.from_user.id, "download_large", platform)
         await status_msg.delete()
@@ -105,28 +119,33 @@ async def handle_url_message(message: Message, bot: Bot):
     up_task = asyncio.create_task(keep_action(bot, message.chat.id, up_action, upload_stop))
 
     try:
-        # Direct Stream Mode (1-2 soniyalik ultra-tezlikda yuborish)
+        sent_msg = None
         if direct_url:
             media_input = URLInputFile(direct_url)
             if is_audio:
-                await message.answer_audio(audio=media_input, caption=caption, parse_mode="HTML")
+                sent_msg = await message.answer_audio(audio=media_input, caption=caption, parse_mode="HTML")
+                save_cached_file(url_hash, sent_msg.audio.file_id, "audio", caption)
             elif is_image:
-                await message.answer_photo(photo=media_input, caption=caption, parse_mode="HTML")
+                sent_msg = await message.answer_photo(photo=media_input, caption=caption, parse_mode="HTML")
+                save_cached_file(url_hash, sent_msg.photo[-1].file_id, "photo", caption)
             else:
-                await message.answer_video(video=media_input, caption=caption, parse_mode="HTML")
+                sent_msg = await message.answer_video(video=media_input, caption=caption, parse_mode="HTML")
+                save_cached_file(url_hash, sent_msg.video.file_id, "video", caption)
             await status_msg.delete()
             log_stat(message.from_user.id, "download_fast", platform)
             return
 
-        # Zaxira fayl rejimi
         if file_path and os.path.exists(file_path):
             media_file = FSInputFile(file_path)
             if is_audio:
-                await message.answer_audio(audio=media_file, caption=caption, parse_mode="HTML")
+                sent_msg = await message.answer_audio(audio=media_file, caption=caption, parse_mode="HTML")
+                save_cached_file(url_hash, sent_msg.audio.file_id, "audio", caption)
             elif is_image:
-                await message.answer_photo(photo=media_file, caption=caption, parse_mode="HTML")
+                sent_msg = await message.answer_photo(photo=media_file, caption=caption, parse_mode="HTML")
+                save_cached_file(url_hash, sent_msg.photo[-1].file_id, "photo", caption)
             else:
-                await message.answer_video(video=media_file, caption=caption, parse_mode="HTML")
+                sent_msg = await message.answer_video(video=media_file, caption=caption, parse_mode="HTML")
+                save_cached_file(url_hash, sent_msg.video.file_id, "video", caption)
             await status_msg.delete()
             log_stat(message.from_user.id, "download_fallback", platform)
     except Exception as e:
