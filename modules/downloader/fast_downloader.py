@@ -1,0 +1,366 @@
+﻿import os
+import re
+import asyncio
+import uuid
+import shutil
+import html
+import requests
+from bs4 import BeautifulSoup
+from pathlib import Path
+import yt_dlp
+from core.config import DOWNLOADS_DIR, logger
+
+SYSTEM_FFMPEG = shutil.which("ffmpeg")
+if SYSTEM_FFMPEG:
+    FFMPEG_EXE = SYSTEM_FFMPEG
+else:
+    try:
+        import imageio_ffmpeg
+        FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        FFMPEG_EXE = "ffmpeg"
+
+FFMPEG_DIR = str(Path(FFMPEG_EXE).parent)
+if FFMPEG_DIR not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
+
+URL_PATTERNS = {
+    "instagram": re.compile(r"(https?://(?:www\.)?instagram\.com/(?:p|reel|tv|stories)/[\w\-]+)", re.IGNORECASE),
+    "tiktok": re.compile(r"(https?://(?:www\.|vm\.|vt\.)?tiktok\.com/[\w\-@/]+)", re.IGNORECASE),
+    "youtube": re.compile(r"(https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[\w\-]+)", re.IGNORECASE),
+    "pinterest": re.compile(r"(https?://(?:[a-z0-9]+\.)?pinterest\.(?:com|it|co\.uk|es|de|fr)/pin/[\w\-]+|https?://pin\.it/[\w\-]+)", re.IGNORECASE),
+    "likee": re.compile(r"(https?://(?:[a-z0-9]+\.)?likee\.(?:video|com)/[\w\-@/]+)", re.IGNORECASE),
+    "snapchat": re.compile(r"(https?://(?:www\.)?snapchat\.com/(?:spotlight|add)/[\w\-]+)", re.IGNORECASE),
+    "threads": re.compile(r"(https?://(?:www\.)?threads\.net/[\w\-@/]+)", re.IGNORECASE)
+}
+
+def detect_platform(url: str) -> str:
+    for platform, pattern in URL_PATTERNS.items():
+        if pattern.search(url):
+            return platform
+    return "media"
+
+async def fast_download_media(url: str, extract_audio: bool = False) -> dict:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _sync_fast_download, url, extract_audio)
+
+def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
+    platform = detect_platform(url)
+    
+    # 1. TikTok Tikwm Engine (0.3s)
+    if platform == "tiktok":
+        res = _fetch_tiktok_tikwm(url, extract_audio)
+        if res.get("success"):
+            return res
+
+    # 2. Instagram Engine
+    if platform == "instagram":
+        res = _fetch_instagram_fast(url, extract_audio)
+        if res.get("success"):
+            return res
+
+    # 3. Pinterest Engine
+    if platform == "pinterest":
+        res = _fetch_pinterest_fast(url)
+        if res.get("success"):
+            return res
+
+    # 4. YouTube Direct Stream Engine
+    if platform == "youtube":
+        res = _fetch_youtube_fast(url, extract_audio)
+        if res.get("success"):
+            return res
+
+    # 5. Public API Engine
+    res_api = _fetch_cobalt_public_api(url, extract_audio)
+    if res_api.get("success"):
+        return res_api
+
+    # 6. yt-dlp Direct Stream Engine
+    res_ytdl = _fetch_ytdlp_fast(url, extract_audio)
+    if res_ytdl.get("success"):
+        return res_ytdl
+
+    # 7. HTML Meta Scraper Engine
+    res_scrape = _fetch_html_scrape(url)
+    if res_scrape.get("success"):
+        return res_scrape
+
+    return {
+        "success": False,
+        "error": "Kechirasiz, ushbu media yuklanmadi. Havola to'g'ri va ochiq profilga tegishli ekanligini tekshiring."
+    }
+
+# ==================== PLATFORM ENGINES ====================
+
+def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
+    try:
+        api_url = "https://www.tikwm.com/api/"
+        resp = requests.post(api_url, data={"url": url, "hd": 1}, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json().get("data", {})
+            if data:
+                title = data.get("title", "TikTok Video")
+                if extract_audio and data.get("music"):
+                    return {
+                        "success": True,
+                        "direct_url": data.get("music"),
+                        "title": title,
+                        "is_audio": True,
+                        "is_image": False,
+                        "platform": "tiktok"
+                    }
+                images = data.get("images")
+                if images and isinstance(images, list) and len(images) > 0:
+                    return {
+                        "success": True,
+                        "direct_url": images[0],
+                        "images": images,
+                        "title": title,
+                        "is_audio": False,
+                        "is_image": True,
+                        "platform": "tiktok"
+                    }
+                play_url = data.get("hdplay") or data.get("play")
+                if play_url:
+                    return {
+                        "success": True,
+                        "direct_url": play_url,
+                        "title": title,
+                        "is_audio": False,
+                        "is_image": False,
+                        "platform": "tiktok"
+                    }
+    except Exception as e:
+        logger.warning(f"Tikwm error: {e}")
+    return {"success": False}
+
+def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
+    try:
+        clean_url = url.split("?")[0].rstrip("/") + "/?__a=1&__d=dis"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+            "Accept": "*/*"
+        }
+        resp = requests.get(clean_url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            try:
+                js = resp.json()
+                items = js.get("items", [])
+                if items:
+                    item = items[0]
+                    title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
+                    video_versions = item.get("video_versions", [])
+                    if video_versions:
+                        return {
+                            "success": True,
+                            "direct_url": video_versions[0].get("url"),
+                            "title": title[:50],
+                            "is_audio": extract_audio,
+                            "is_image": False,
+                            "platform": "instagram"
+                        }
+                    image_versions = item.get("image_versions2", {}).get("candidates", [])
+                    if image_versions:
+                        return {
+                            "success": True,
+                            "direct_url": image_versions[0].get("url"),
+                            "title": title[:50],
+                            "is_audio": False,
+                            "is_image": True,
+                            "platform": "instagram"
+                        }
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Instagram fast error: {e}")
+    return {"success": False}
+
+def _fetch_pinterest_fast(url: str) -> dict:
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = requests.get(url, headers=headers, timeout=6, allow_redirects=True)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            title = soup.title.string.strip()[:50] if soup.title and soup.title.string else "Pinterest Media"
+
+            for meta in soup.find_all('meta'):
+                prop = meta.get('property', '') or meta.get('name', '')
+                if prop in ['og:video', 'og:video:secure_url', 'twitter:player:stream']:
+                    content = meta.get('content')
+                    if content and content.startswith('http'):
+                        return {
+                            "success": True,
+                            "direct_url": content,
+                            "title": title,
+                            "is_audio": False,
+                            "is_image": False,
+                            "platform": "pinterest"
+                        }
+
+            for meta in soup.find_all('meta'):
+                prop = meta.get('property', '') or meta.get('name', '')
+                if prop in ['og:image', 'twitter:image']:
+                    content = meta.get('content')
+                    if content and content.startswith('http'):
+                        if "pinimg.com" in content:
+                            content = re.sub(r'/(?:736x|564x|474x|236x)/', '/originals/', content)
+                        return {
+                            "success": True,
+                            "direct_url": content,
+                            "title": title,
+                            "is_audio": False,
+                            "is_image": True,
+                            "platform": "pinterest"
+                        }
+    except Exception as e:
+        logger.warning(f"Pinterest fast error: {e}")
+    return {"success": False}
+
+def _fetch_youtube_fast(url: str, extract_audio: bool) -> dict:
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'ffmpeg_location': FFMPEG_EXE,
+            'extractor_args': {'youtube': ['player_client=android,web']}
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info:
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
+                title = info.get('title', 'YouTube Video')
+                duration = info.get('duration', 0)
+                
+                if duration > 1800 or info.get('filesize', 0) > 49 * 1024 * 1024:
+                    formats = info.get('formats', [])
+                    direct_url = formats[-1].get('url') if formats else url
+                    return {
+                        "success": True,
+                        "is_large": True,
+                        "title": title,
+                        "duration": duration,
+                        "direct_url": direct_url,
+                        "platform": "youtube"
+                    }
+                    
+                formats = info.get('formats', [])
+                valid_formats = [f for f in formats if f.get('vcodec') != 'none' and f.get('acodec') != 'none']
+                if valid_formats:
+                    direct_url = valid_formats[-1].get('url')
+                    return {
+                        "success": True,
+                        "direct_url": direct_url,
+                        "title": title,
+                        "duration": duration,
+                        "is_audio": extract_audio,
+                        "is_image": False,
+                        "platform": "youtube"
+                    }
+    except Exception as e:
+        logger.warning(f"YouTube fast error: {e}")
+    return {"success": False}
+
+def _fetch_cobalt_public_api(url: str, extract_audio: bool) -> dict:
+    try:
+        api_url = "https://co.wuk.sh/api/json"
+        payload = {"url": url, "isAudioOnly": extract_audio, "aFormat": "mp3"}
+        headers = {"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+        res = requests.post(api_url, json=payload, headers=headers, timeout=6)
+        if res.status_code == 200:
+            data = res.json()
+            media_link = data.get("url")
+            if media_link:
+                return {
+                    "success": True,
+                    "direct_url": media_link,
+                    "title": "Downloaded Media",
+                    "duration": 0,
+                    "is_audio": extract_audio,
+                    "is_image": False,
+                    "platform": detect_platform(url)
+                }
+    except Exception:
+        pass
+    return {"success": False}
+
+def _fetch_ytdlp_fast(url: str, extract_audio: bool) -> dict:
+    file_id = uuid.uuid4().hex[:8]
+    out_template = str(DOWNLOADS_DIR / f"{file_id}_%(title).40s.%(ext)s")
+    ydl_opts = {
+        'outtmpl': out_template,
+        'quiet': True,
+        'no_warnings': True,
+        'ffmpeg_location': FFMPEG_EXE,
+        'noplaylist': True,
+        'max_filesize': 49 * 1024 * 1024,
+        'concurrent_fragment_downloads': 8,
+        'socket_timeout': 10,
+        'format': 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best/b'
+    }
+    if extract_audio:
+        ydl_opts['format'] = 'bestaudio/best'
+        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            if info:
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
+                downloaded_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*"))
+                if downloaded_files:
+                    filepath = downloaded_files[0]
+                    return {
+                        "success": True,
+                        "file_path": str(filepath),
+                        "title": info.get('title', 'Media'),
+                        "duration": info.get('duration', 0),
+                        "is_audio": extract_audio or filepath.suffix.lower() in ['.mp3', '.m4a'],
+                        "is_image": filepath.suffix.lower() in ['.jpg', '.png', '.webp'],
+                        "platform": detect_platform(url)
+                    }
+    except Exception as e:
+        logger.warning(f"yt-dlp fallback error: {e}")
+    return {"success": False}
+
+def _fetch_html_scrape(url: str) -> dict:
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = requests.get(url, headers=headers, timeout=6, allow_redirects=True)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            title = soup.title.string.strip()[:50] if soup.title and soup.title.string else "Media"
+
+            for meta in soup.find_all('meta'):
+                prop = meta.get('property', '') or meta.get('name', '')
+                if prop in ['og:video', 'og:video:secure_url', 'twitter:player:stream']:
+                    content = meta.get('content')
+                    if content and content.startswith('http'):
+                        return {
+                            "success": True,
+                            "direct_url": content,
+                            "title": title,
+                            "is_audio": False,
+                            "is_image": False,
+                            "platform": detect_platform(url)
+                        }
+
+            for meta in soup.find_all('meta'):
+                prop = meta.get('property', '') or meta.get('name', '')
+                if prop in ['og:image', 'twitter:image']:
+                    content = meta.get('content')
+                    if content and content.startswith('http'):
+                        return {
+                            "success": True,
+                            "direct_url": content,
+                            "title": title,
+                            "is_audio": False,
+                            "is_image": True,
+                            "platform": detect_platform(url)
+                        }
+    except Exception:
+        pass
+    return {"success": False}
