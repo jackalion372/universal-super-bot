@@ -111,6 +111,7 @@ async def analyze_document_with_ai(user_id: int, file_path: str, user_question: 
     
     try:
         if ext == ".pdf":
+            from pypdf import PdfReader
             reader = PdfReader(file_path)
             for i, page in enumerate(reader.pages[:30]):
                 t = page.extract_text()
@@ -118,10 +119,12 @@ async def analyze_document_with_ai(user_id: int, file_path: str, user_question: 
                     extracted_text += f"\n--- Sahifa {i+1} ---\n" + t
                     
         elif ext in [".docx", ".doc"]:
+            from docx import Document
             doc = Document(file_path)
             extracted_text = "\n".join([p.text for p in doc.paragraphs if p.text])
             
         elif ext in [".xlsx", ".xls"]:
+            import openpyxl
             wb = openpyxl.load_workbook(file_path, data_only=True)
             for sheet in wb.sheetnames[:5]:
                 ws = wb[sheet]
@@ -130,6 +133,7 @@ async def analyze_document_with_ai(user_id: int, file_path: str, user_question: 
                     row_vals = [str(v) for v in row if v is not None]
                     if row_vals:
                         extracted_text += "\t".join(row_vals) + "\n"
+
                         
         elif ext in [".txt", ".py", ".js", ".html", ".css", ".json", ".csv", ".md", ".cpp", ".java", ".sql"]:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
