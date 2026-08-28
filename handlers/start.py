@@ -1,4 +1,4 @@
-﻿from aiogram import Router, F, Bot
+from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
@@ -125,21 +125,21 @@ async def back_to_main(message: Message):
     set_user_mode(message.from_user.id, "general")
     await message.answer("🏠 **Bosh menyuga qaytdingiz.**", parse_mode="Markdown", reply_markup=get_main_menu_keyboard(message.from_user.id))
 
-# ==================== DIRECT COMMANDS ====================
+# ==================== DIRECT COMMANDS & GROUPED MENUS ====================
 
 @router.message(Command("downloader"))
-@router.message(F.text == "📥 Media Yuklash")
+@router.message(F.text.in_({"📥 Media Yuklash", "📥 Media Studiya"}))
 async def menu_downloader(message: Message):
     set_user_mode(message.from_user.id, "downloader")
     info = (
-        "📥 **Media Yuklash Bo'limi**\n\n"
+        "📥 **Media Studiya Bo'limi**\n\n"
         "Quyidagi tarmoqlardan video yoki post havolasini (link) yuboring:\n"
-        "• 📸 **Instagram:** Post, Reels, Audio\n"
-        "• 🎵 **TikTok:** Suv belgisiz video + musiqa\n"
-        "• ▶️ **YouTube:** Video, Shorts + MP3\n"
-        "• 📌 **Pinterest:** Video va foto\n"
+        "• 📸 **Instagram:** Post, Reels, Carousel, Stories\n"
+        "• 🎵 **TikTok:** Suv belgisiz HD video + Audio\n"
+        "• ▶️ **YouTube:** Video, Shorts + MP3 Audio\n"
+        "• 📌 **Pinterest:** HD Video va 4K Foto\n"
         "• 👻 **Snapchat & Likee:** Sifatli video\n\n"
-        "👉 *Havolani shu yerga yuboring:*"
+        "👉 *Havolani (link) shu yerga yuboring:*"
     )
     await message.answer(info, parse_mode="Markdown")
 
@@ -158,11 +158,11 @@ async def menu_shazam(message: Message):
     await message.answer(info, parse_mode="Markdown")
 
 @router.message(Command("ai"))
-@router.message(F.text == "🧠 AI Yordamchi")
+@router.message(F.text.in_({"🧠 AI Yordamchi", "🧠 AI Studiya"}))
 async def menu_ai(message: Message):
     set_user_mode(message.from_user.id, "ai")
     info = (
-        "🧠 **Google Gemini AI Yordamchi**\n\n"
+        "🧠 **Google Gemini AI Studiya**\n\n"
         "Men sizga quyidagilarda yordam bera olaman:\n"
         "💬 Har qanday mavzuda suhbat va savol-javob\n"
         "💻 Mukammal dasturlash va kodlar yozish\n"
@@ -174,22 +174,15 @@ async def menu_ai(message: Message):
     )
     await message.answer(info, parse_mode="Markdown")
 
-@router.message(Command("tools"))
-@router.message(F.text == "🎨 Rasm Vositalari")
-async def menu_media_tools(message: Message):
-    await message.answer("🎨 **Rasm va Media Vositalari:**\nKerakli amaliyotni tanlang:", reply_markup=get_media_tools_keyboard())
-
-@router.message(F.text == "📄 Fayl & PDF")
+@router.message(F.text.in_({"📄 Fayl & PDF", "📄 Hujjat & PDF Studiyasi"}))
 async def menu_file_tools(message: Message):
-    await message.answer("📄 **Fayl va Hujjat Konvertorlari:**\nKerakli xizmatni tanlang:", reply_markup=get_file_tools_keyboard())
+    await message.answer("📄 **Hujjat va PDF Studiyasi:**\nKerakli xizmatni tanlang:", reply_markup=get_file_tools_keyboard())
 
-@router.message(F.text == "✍️ Matn & Til")
-async def menu_text_tools(message: Message):
-    await message.answer("✍️ **Til va Matn Vositalari:**\nKerakli bo'limni tanlang:", reply_markup=get_text_tools_keyboard())
+@router.message(Command("tools"))
+@router.message(F.text.in_({"🎨 Rasm Vositalari", "🎨 Rasm, Matn & Utilitlar"}))
+async def menu_media_tools(message: Message):
+    await message.answer("🎨 **Rasm, Matn va Kundalik Utilitlar:**\nKerakli bo'limni tanlang:", reply_markup=get_media_tools_keyboard())
 
-@router.message(F.text == "🛠 Kundalik Asboblar")
-async def menu_utility_tools(message: Message):
-    await message.answer("🛠 **Foydali Kundalik Asboblar:**\nKerakli xizmatni tanlang:", reply_markup=get_utility_tools_keyboard())
 
 # ==================== ADMINGA MUROJAAT (FEEDBACK) ====================
 
