@@ -18,15 +18,15 @@ async def handle_health_check(request):
     return web.Response(text="Universal Super Bot is Running Live 24/7 Cloud Webhook!")
 
 async def keep_alive_self_ping():
-    """Render Free serverini 24/7 faol ushlab turish uchun har 4 daqiqada ping"""
-    render_url = os.getenv("RENDER_EXTERNAL_URL", "https://universal-super-bot.onrender.com")
-    health_url = f"{render_url.rstrip('/')}/health"
+    """Serverni 24/7 faol ushlab turish uchun har 4 daqiqada ping"""
+    host_url = os.getenv("WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL", "https://nafibo.alwaysdata.net")
+    health_url = f"{host_url.rstrip('/')}/health"
     while True:
         await asyncio.sleep(240)
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, requests.get, health_url)
-            logger.info("Render Keep-Alive ping yuborildi (24/7 Faol).")
+            logger.info("24/7 Keep-Alive ping yuborildi.")
         except Exception:
             pass
 
@@ -94,10 +94,10 @@ async def main():
     asyncio.create_task(keep_alive_self_ping())
 
     # Cloud Deployment vs Local Polling Auto-Detection
-    render_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEBHOOK_URL")
+    host_url = os.getenv("WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
     
-    if os.getenv("RENDER") or render_url:
-        webhook_base = render_url.rstrip("/")
+    if os.getenv("ALWAYSDATA_HTTPD_PORT") or os.getenv("PORT") or os.getenv("RENDER") or host_url:
+        webhook_base = (host_url or "https://nafibo.alwaysdata.net").rstrip("/")
         webhook_url = f"{webhook_base}/webhook"
         logger.info(f"🌐 Cloud Webhook Mode faollashmoqda: {webhook_url}")
         
@@ -111,12 +111,14 @@ async def main():
         webhook_requests_handler.register(app, path="/webhook")
         setup_application(app, dp, bot=bot)
         
-        port = int(os.getenv("PORT", 8080))
+        bind_ip = os.getenv("IP", "0.0.0.0")
+        bind_port = int(os.getenv("PORT") or os.getenv("ALWAYSDATA_HTTPD_PORT") or 8080)
+        
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", port)
+        site = web.TCPSite(runner, bind_ip, bind_port)
         await site.start()
-        logger.info(f"🚀 Render 24/7 Cloud Webhook Server {port}-portda ishga tushdi!")
+        logger.info(f"🚀 24/7 Cloud Webhook Server {bind_ip}:{bind_port} portda ishga tushdi!")
         await asyncio.Event().wait()
     else:
         logger.info("💻 Local Polling Mode faollashmoqda...")
