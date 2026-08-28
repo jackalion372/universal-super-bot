@@ -4,6 +4,7 @@ import asyncio
 import uuid
 import shutil
 import html
+import json
 import requests
 from bs4 import BeautifulSoup
 from pathlib import Path
@@ -67,7 +68,7 @@ def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
         if res.get("success"):
             return res
 
-    # 3. Pinterest Engine
+    # 3. Pinterest Engine (HD Video & 4K Photo Extraction)
     if platform == "pinterest":
         res = _fetch_pinterest_fast(url)
         if res.get("success"):
@@ -79,17 +80,12 @@ def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
         if res.get("success"):
             return res
 
-    # 5. Public API Engine
-    res_api = _fetch_cobalt_public_api(url, extract_audio)
-    if res_api.get("success"):
-        return res_api
-
-    # 6. yt-dlp Direct Stream Engine
+    # 5. yt-dlp Direct Stream Engine
     res_ytdl = _fetch_ytdlp_fast(url, extract_audio)
     if res_ytdl.get("success"):
         return res_ytdl
 
-    # 7. HTML Meta Scraper Engine
+    # 6. HTML Meta Scraper Engine
     res_scrape = _fetch_html_scrape(url)
     if res_scrape.get("success"):
         return res_scrape
@@ -209,7 +205,7 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                         "platform": "instagram"
                     }
 
-        # 2-Manba: yt-dlp Logger Intercept & Embed HD Fetch (BARCHA 10-20 TA RASMLARNI AKKURATNIY CHIQARISH)
+        # 2-Manba: yt-dlp Logger Intercept & Embed HD Fetch
         shortcodes = []
         class InterceptLogger:
             def debug(self, msg):
@@ -279,13 +275,48 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
     return {"success": False}
 
 def _fetch_pinterest_fast(url: str) -> dict:
+    """Pinterest HD Video & 4K Photo extractor engine"""
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+        
+        # 1. Shortened pin.it link resolving
         resp = requests.get(url, headers=headers, timeout=6, allow_redirects=True)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, 'html.parser')
+        final_url = resp.url
+        
+        # Clean Pin ID URL (strip /sent/?invite_code= tracking params)
+        pin_match = re.search(r'/pin/(\d+)', final_url)
+        clean_pin_url = f"https://www.pinterest.com/pin/{pin_match.group(1)}/" if pin_match else final_url
+        
+        resp2 = requests.get(clean_pin_url, headers=headers, timeout=6)
+        if resp2.status_code == 200:
+            soup = BeautifulSoup(resp2.text, 'html.parser')
             title = soup.title.string.strip()[:50] if soup.title and soup.title.string else "Pinterest Media"
 
+            # 2. Extract Direct MP4 Video Stream URLs from v.pinimg.com
+            v_urls = re.findall(r'https://[^\s"\'<>]+v\.pinimg\.com[^\s"\'<>]+\.mp4', resp2.text)
+            if not v_urls:
+                v_urls = re.findall(r'https://[^\s"\'<>]+pinimg\.com[^\s"\'<>]+\.mp4', resp2.text)
+
+            if v_urls:
+                clean_vids = list(set([html.unescape(v.replace('\\/', '/')) for v in v_urls]))
+                best_vid = clean_vids[0]
+                for v in clean_vids:
+                    if "720p" in v.lower() or "v720p" in v.lower():
+                        best_vid = v
+                        break
+                return {
+                    "success": True,
+                    "direct_url": best_vid,
+                    "title": title,
+                    "is_audio": False,
+                    "is_image": False,
+                    "platform": "pinterest"
+                }
+
+            # 3. Check for Meta Video Tags
             for meta in soup.find_all('meta'):
                 prop = meta.get('property', '') or meta.get('name', '')
                 if prop in ['og:video', 'og:video:secure_url', 'twitter:player:stream']:
@@ -300,6 +331,7 @@ def _fetch_pinterest_fast(url: str) -> dict:
                             "platform": "pinterest"
                         }
 
+            # 4. Check for Meta Photo Tags (Original 4K/HD Quality)
             for meta in soup.find_all('meta'):
                 prop = meta.get('property', '') or meta.get('name', '')
                 if prop in ['og:image', 'twitter:image']:
@@ -315,6 +347,25 @@ def _fetch_pinterest_fast(url: str) -> dict:
                             "is_image": True,
                             "platform": "pinterest"
                         }
+
+        # 5. yt-dlp Fallback on Clean Pin URL
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'socket_timeout': 10
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(clean_pin_url, download=False)
+            if info and info.get("url"):
+                return {
+                    "success": True,
+                    "direct_url": info["url"],
+                    "title": info.get("title", "Pinterest Video"),
+                    "is_audio": False,
+                    "is_image": info.get("ext") in ["jpg", "png", "webp"],
+                    "platform": "pinterest"
+                }
+
     except Exception as e:
         logger.warning(f"Pinterest fast error: {e}")
     return {"success": False}
@@ -371,29 +422,6 @@ def _fetch_youtube_fast(url: str, extract_audio: bool) -> dict:
         "direct_url": y2_link,
         "platform": "youtube"
     }
-
-def _fetch_cobalt_public_api(url: str, extract_audio: bool) -> dict:
-    try:
-        api_url = "https://co.wuk.sh/api/json"
-        payload = {"url": url, "isAudioOnly": extract_audio, "aFormat": "mp3"}
-        headers = {"Accept": "application/json", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
-        res = requests.post(api_url, json=payload, headers=headers, timeout=6)
-        if res.status_code == 200:
-            data = res.json()
-            media_link = data.get("url")
-            if media_link:
-                return {
-                    "success": True,
-                    "direct_url": media_link,
-                    "title": "Downloaded Media",
-                    "duration": 0,
-                    "is_audio": extract_audio,
-                    "is_image": False,
-                    "platform": detect_platform(url)
-                }
-    except Exception:
-        pass
-    return {"success": False}
 
 def _fetch_ytdlp_fast(url: str, extract_audio: bool) -> dict:
     file_id = uuid.uuid4().hex[:8]
