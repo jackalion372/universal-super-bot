@@ -8,34 +8,24 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, BotCommandScopeDefault
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from core.config import BOT_TOKEN, DOWNLOADS_DIR, TEMP_DIR, logger
 from core.database import init_db
 from handlers import start, admin_h, downloader_h, shazam_h, ai_h, tools_h
 
-# Render Free Web Service Health Check Handler
 async def handle_health_check(request):
-    return web.Response(text="Universal Super Bot is Running Live 24/7!")
-
-async def start_health_server():
-    port = int(os.getenv("PORT", 8080))
-    app = web.Application()
-    app.router.add_get("/", handle_health_check)
-    app.router.add_get("/health", handle_health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    logger.info(f"Render Health Server {port}-portda ishga tushdi.")
+    return web.Response(text="Universal Super Bot is Running Live 24/7 Cloud Webhook!")
 
 async def keep_alive_self_ping():
-    """Render Free serverini uyquga ketishdan asrash uchun har 5 daqiqada ping"""
+    """Render Free serverini 24/7 faol ushlab turish uchun har 4 daqiqada ping"""
     render_url = os.getenv("RENDER_EXTERNAL_URL", "https://universal-super-bot.onrender.com")
+    health_url = f"{render_url.rstrip('/')}/health"
     while True:
-        await asyncio.sleep(300) # 5 daqiqa
+        await asyncio.sleep(240)
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, requests.get, render_url)
+            await loop.run_in_executor(None, requests.get, health_url)
             logger.info("Render Keep-Alive ping yuborildi (24/7 Faol).")
         except Exception:
             pass
@@ -83,9 +73,6 @@ async def main():
     init_db()
     logger.info("Ma'lumotlar bazasi tayyor.")
 
-    await start_health_server()
-    asyncio.create_task(keep_alive_self_ping())
-
     session = AiohttpSession()
     bot = Bot(
         token=BOT_TOKEN,
@@ -104,10 +91,37 @@ async def main():
     dp.include_router(ai_h.router)
 
     asyncio.create_task(periodic_cleanup())
+    asyncio.create_task(keep_alive_self_ping())
 
-    logger.info("🚀 Universal Super Bot ishga tushdi (Anti-Sleep Keep-Alive)!")
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot, polling_timeout=20)
+    # Cloud Deployment vs Local Polling Auto-Detection
+    render_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("WEBHOOK_URL")
+    
+    if os.getenv("RENDER") or render_url:
+        webhook_base = render_url.rstrip("/")
+        webhook_url = f"{webhook_base}/webhook"
+        logger.info(f"🌐 Cloud Webhook Mode faollashmoqda: {webhook_url}")
+        
+        await bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+        
+        app = web.Application()
+        app.router.add_get("/", handle_health_check)
+        app.router.add_get("/health", handle_health_check)
+        
+        webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+        webhook_requests_handler.register(app, path="/webhook")
+        setup_application(app, dp, bot=bot)
+        
+        port = int(os.getenv("PORT", 8080))
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        logger.info(f"🚀 Render 24/7 Cloud Webhook Server {port}-portda ishga tushdi!")
+        await asyncio.Event().wait()
+    else:
+        logger.info("💻 Local Polling Mode faollashmoqda...")
+        await bot.delete_webhook(drop_pending_updates=True)
+        await dp.start_polling(bot, polling_timeout=20)
 
 if __name__ == "__main__":
     try:
