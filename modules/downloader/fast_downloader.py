@@ -40,6 +40,14 @@ def detect_platform(url: str) -> str:
             return platform
     return "media"
 
+def shortcode_to_id(shortcode: str) -> int:
+    alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+    media_id = 0
+    for char in shortcode:
+        if char in alphabet:
+            media_id = (media_id * 64) + alphabet.index(char)
+    return media_id
+
 async def fast_download_media(url: str, extract_audio: bool = False) -> dict:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _sync_fast_download, url, extract_audio)
@@ -47,13 +55,13 @@ async def fast_download_media(url: str, extract_audio: bool = False) -> dict:
 def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
     platform = detect_platform(url)
     
-    # 1. TikTok Tikwm Engine (0.3s)
+    # 1. TikTok Engine (Video + Barcha Karusel Rasmlar)
     if platform == "tiktok":
         res = _fetch_tiktok_tikwm(url, extract_audio)
         if res.get("success"):
             return res
 
-    # 2. Instagram Engine
+    # 2. Instagram Engine (Single Photo/Video + Barcha Karusel Rasmlar)
     if platform == "instagram":
         res = _fetch_instagram_fast(url, extract_audio)
         if res.get("success"):
@@ -65,7 +73,7 @@ def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
         if res.get("success"):
             return res
 
-    # 4. YouTube Engine (2 soatlik kinolarni ham to'liq va ixcham yuklash)
+    # 4. YouTube Engine
     if platform == "youtube":
         res = _fetch_youtube_fast(url, extract_audio)
         if res.get("success"):
@@ -136,63 +144,106 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
     return {"success": False}
 
 def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
+    """Instagram Karusel (?img_index=X bo'lsa ham) va barcha rasmlarni HD yuklash"""
     try:
-        clean_url = url.split("?")[0].rstrip("/") + "/?__a=1&__d=dis"
+        # URL'ni tozalash va Shortcode ajratish
+        match = re.search(r"instagram\.com/(?:p|reel|tv)/([\w\-]+)", url, re.IGNORECASE)
+        if not match:
+            return {"success": False}
+            
+        shortcode = match.group(1)
+        media_id = shortcode_to_id(shortcode)
+        
+        # 1-Manba: Direct API Query
+        api_url = f"https://www.instagram.com/api/v1/media/{media_id}/info/"
         headers = {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+            "User-Agent": "Instagram 275.0.0.27.98 Android (33/13; 480dpi; 1080x2400; Xiaomi; M2007J20CG; surya; qcom; en_US; 457476830)",
+            "X-IG-App-ID": "936619743392459",
             "Accept": "*/*"
         }
-        resp = requests.get(clean_url, headers=headers, timeout=5)
+        resp = requests.get(api_url, headers=headers, timeout=5)
         if resp.status_code == 200:
-            try:
-                js = resp.json()
-                items = js.get("items", [])
-                if items:
-                    item = items[0]
-                    title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
-                    carousel = item.get("carousel_media", [])
-                    if carousel and isinstance(carousel, list) and len(carousel) > 1:
-                        media_list = []
-                        for sub in carousel[:10]:
-                            v_vers = sub.get("video_versions", [])
-                            if v_vers:
-                                media_list.append({"type": "video", "url": v_vers[0].get("url")})
-                            else:
-                                i_vers = sub.get("image_versions2", {}).get("candidates", [])
-                                if i_vers:
-                                    media_list.append({"type": "photo", "url": i_vers[0].get("url")})
-                        if media_list:
-                            return {
-                                "success": True,
-                                "is_album": True,
-                                "media_list": media_list,
-                                "title": title[:50],
-                                "is_audio": False,
-                                "is_image": False,
-                                "platform": "instagram"
-                            }
-                    video_versions = item.get("video_versions", [])
-                    if video_versions:
+            js = resp.json()
+            items = js.get("items", [])
+            if items:
+                item = items[0]
+                title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
+                
+                # BARCHA Karusel rasmlari va videolarni yig'ish (1080p HD)
+                carousel = item.get("carousel_media", [])
+                if carousel and isinstance(carousel, list) and len(carousel) > 0:
+                    media_list = []
+                    for sub in carousel[:10]:
+                        v_vers = sub.get("video_versions", [])
+                        if v_vers:
+                            media_list.append({"type": "video", "url": v_vers[0].get("url")})
+                        else:
+                            i_vers = sub.get("image_versions2", {}).get("candidates", [])
+                            if i_vers:
+                                media_list.append({"type": "photo", "url": i_vers[0].get("url")})
+                    if media_list:
                         return {
                             "success": True,
-                            "direct_url": video_versions[0].get("url"),
+                            "is_album": True,
+                            "media_list": media_list,
                             "title": title[:50],
-                            "is_audio": extract_audio,
+                            "is_audio": False,
                             "is_image": False,
                             "platform": "instagram"
                         }
-                    image_versions = item.get("image_versions2", {}).get("candidates", [])
-                    if image_versions:
+
+                video_versions = item.get("video_versions", [])
+                if video_versions:
+                    return {
+                        "success": True,
+                        "direct_url": video_versions[0].get("url"),
+                        "title": title[:50],
+                        "is_audio": extract_audio,
+                        "is_image": False,
+                        "platform": "instagram"
+                    }
+                image_versions = item.get("image_versions2", {}).get("candidates", [])
+                if image_versions:
+                    return {
+                        "success": True,
+                        "direct_url": image_versions[0].get("url"),
+                        "title": title[:50],
+                        "is_audio": False,
+                        "is_image": True,
+                        "platform": "instagram"
+                    }
+
+        # 2-Manba: Direct Scrape Fallback
+        clean_url = f"https://www.instagram.com/p/{shortcode}/?__a=1&__d=dis"
+        headers_web = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp2 = requests.get(clean_url, headers=headers_web, timeout=5)
+        if resp2.status_code == 200:
+            js2 = resp2.json()
+            items2 = js2.get("items", [])
+            if items2:
+                item = items2[0]
+                title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
+                carousel = item.get("carousel_media", [])
+                if carousel and len(carousel) > 0:
+                    media_list = []
+                    for sub in carousel[:10]:
+                        v_vers = sub.get("video_versions", [])
+                        if v_vers:
+                            media_list.append({"type": "video", "url": v_vers[0].get("url")})
+                        else:
+                            i_vers = sub.get("image_versions2", {}).get("candidates", [])
+                            if i_vers:
+                                media_list.append({"type": "photo", "url": i_vers[0].get("url")})
+                    if media_list:
                         return {
                             "success": True,
-                            "direct_url": image_versions[0].get("url"),
+                            "is_album": True,
+                            "media_list": media_list,
                             "title": title[:50],
                             "is_audio": False,
-                            "is_image": True,
+                            "is_image": False,
                             "platform": "instagram"
                         }
-            except Exception:
-                pass
     except Exception as e:
         logger.warning(f"Instagram fast error: {e}")
     return {"success": False}
@@ -239,11 +290,9 @@ def _fetch_pinterest_fast(url: str) -> dict:
     return {"success": False}
 
 def _fetch_youtube_fast(url: str, extract_audio: bool) -> dict:
-    """2 soatlik va barcha YouTube videolarni 100% muvaffaqiyatli yuklash engine"""
     file_id = uuid.uuid4().hex[:8]
     out_template = str(DOWNLOADS_DIR / f"{file_id}_%(title).40s.%(ext)s")
     
-    # 2 soatlik kinolar uchun ixcham format va 49MB cheklovga moslash
     ydl_opts = {
         'outtmpl': out_template,
         'quiet': True,
@@ -259,7 +308,6 @@ def _fetch_youtube_fast(url: str, extract_audio: bool) -> dict:
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '128'}]
     else:
-        # Ixcham 360p/480p format (2 soatlik videolarni ham 45MB ichida sig'diradi)
         ydl_opts['format'] = 'bestvideo[height<=480][filesize<45M]+bestaudio/best[filesize<45M]/best[height<=360][filesize<45M]/worst'
 
     try:
@@ -283,7 +331,6 @@ def _fetch_youtube_fast(url: str, extract_audio: bool) -> dict:
     except Exception as e:
         logger.warning(f"YouTube compact download error: {e}")
 
-    # Agar video o'ta katta bo'lib 50MB ga sig'masa, Y2Mate zaxira yuklash havolasini berish
     clean_id = re.sub(r'.*v=([^&]+).*', r'\1', url)
     y2_link = f"https://www.y2mate.com/youtube/{clean_id}"
     return {
