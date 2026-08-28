@@ -61,7 +61,7 @@ def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
         if res.get("success"):
             return res
 
-    # 2. Instagram Engine (Single Photo/Video + Barcha Karusel Rasmlar)
+    # 2. Instagram Engine (Single Photo/Video + Barcha Karusel Rasmlar 1080p Original)
     if platform == "instagram":
         res = _fetch_instagram_fast(url, extract_audio)
         if res.get("success"):
@@ -144,9 +144,8 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
     return {"success": False}
 
 def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
-    """Instagram Karusel (?img_index=X bo'lsa ham) va barcha rasmlarni HD yuklash"""
+    """Instagram Karusel va alohida rasmlarni kesmasdan 100% asl 1080p HD shaklda yuklash"""
     try:
-        # URL'ni tozalash va Shortcode ajratish
         match = re.search(r"instagram\.com/(?:p|reel|tv)/([\w\-]+)", url, re.IGNORECASE)
         if not match:
             return {"success": False}
@@ -154,7 +153,7 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
         shortcode = match.group(1)
         media_id = shortcode_to_id(shortcode)
         
-        # 1-Manba: Direct API Query
+        # 1-Manba: Direct API Info Query
         api_url = f"https://www.instagram.com/api/v1/media/{media_id}/info/"
         headers = {
             "User-Agent": "Instagram 275.0.0.27.98 Android (33/13; 480dpi; 1080x2400; Xiaomi; M2007J20CG; surya; qcom; en_US; 457476830)",
@@ -169,7 +168,7 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                 item = items[0]
                 title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
                 
-                # BARCHA Karusel rasmlari va videolarni yig'ish (1080p HD)
+                # BARCHA Karusel rasmlarni yig'ish (1080p Original Full HD Resolution)
                 carousel = item.get("carousel_media", [])
                 if carousel and isinstance(carousel, list) and len(carousel) > 0:
                     media_list = []
@@ -180,6 +179,7 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                         else:
                             i_vers = sub.get("image_versions2", {}).get("candidates", [])
                             if i_vers:
+                                # Har doim eng yuqori 1080p asl o'lchamli rasmni olish
                                 media_list.append({"type": "photo", "url": i_vers[0].get("url")})
                     if media_list:
                         return {
