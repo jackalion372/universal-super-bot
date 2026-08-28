@@ -4,7 +4,11 @@ import html
 import asyncio
 from aiogram import Router, F, Bot
 from aiogram.enums import ChatAction, ChatType
-from aiogram.types import Message, CallbackQuery, FSInputFile, URLInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message, CallbackQuery, FSInputFile, URLInputFile,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    InputMediaPhoto, InputMediaVideo
+)
 from modules.downloader.fast_downloader import fast_download_media, detect_platform
 from core.database import log_stat
 
@@ -22,7 +26,6 @@ async def keep_action(bot: Bot, chat_id: int, action: ChatAction, stop_event: as
 
 @router.message(F.text.regexp(URL_REGEX))
 async def handle_url_message(message: Message, bot: Bot):
-    # Guruhlarda va shaxsiy chatlarda avtomatik tutib olish
     url_match = URL_REGEX.search(message.text)
     if not url_match:
         return
@@ -33,7 +36,6 @@ async def handle_url_message(message: Message, bot: Bot):
     stop_event = asyncio.Event()
     action_task = asyncio.create_task(keep_action(bot, message.chat.id, ChatAction.RECORD_VIDEO, stop_event))
     
-    # Status xabari
     status_msg = await message.answer(f"⚡️ <b>{platform.capitalize()}</b> havolasi uzatilmoqda...", parse_mode="HTML")
     
     try:
@@ -46,7 +48,30 @@ async def handle_url_message(message: Message, bot: Bot):
         await status_msg.edit_text(f"❌ <b>Kechirasiz, media yuklab olinmadi.</b>\n\n{html.escape(result.get('error', 'Noma''lum xatolik'))}", parse_mode="HTML")
         return
 
-    # 1. Katta (2 soatlik) videolar uchun to'g'ridan-to'g'ri HD havola
+    # 1. Instagram Karusel & TikTok Foto Slaydlar (ALBOM / MEDIA GROUP REJIMI)
+    if result.get("is_album") and result.get("media_list"):
+        media_list = result["media_list"]
+        safe_title = html.escape(result.get("title", "Album"))
+        album = []
+        for idx, item in enumerate(media_list):
+            m_url = item.get("url")
+            m_type = item.get("type", "photo")
+            cap = f"🎬 <b>{safe_title}</b>\n\n🤖 @Mr_nafi_bot orqali yuklandi" if idx == 0 else ""
+            if m_type == "video":
+                album.append(InputMediaVideo(media=URLInputFile(m_url), caption=cap, parse_mode="HTML"))
+            else:
+                album.append(InputMediaPhoto(media=URLInputFile(m_url), caption=cap, parse_mode="HTML"))
+                
+        if album:
+            try:
+                await message.answer_media_group(media=album)
+                await status_msg.delete()
+                log_stat(message.from_user.id, "download_album", platform)
+                return
+            except Exception as e_album:
+                logger.warning(f"MediaGroup error: {e_album}")
+
+    # 2. Katta (2 soatlik) videolar uchun to'g'ridan-to'g'ri HD havola
     if result.get("is_large"):
         safe_title = html.escape(result.get("title", "Video"))
         direct_url = result.get("direct_url", url)
@@ -80,7 +105,7 @@ async def handle_url_message(message: Message, bot: Bot):
     up_task = asyncio.create_task(keep_action(bot, message.chat.id, up_action, upload_stop))
 
     try:
-        # 🚀 Direct Stream Mode (1-2 soniyalik ultra-tezlikda yuborish)
+        # Direct Stream Mode (1-2 soniyalik ultra-tezlikda yuborish)
         if direct_url:
             media_input = URLInputFile(direct_url)
             if is_audio:
@@ -105,7 +130,6 @@ async def handle_url_message(message: Message, bot: Bot):
             await status_msg.delete()
             log_stat(message.from_user.id, "download_fallback", platform)
     except Exception as e:
-        # Garovli zaxira: Direct Stream rad etilsa, mahalliy fayldan uzatish
         if file_path and os.path.exists(file_path):
             try:
                 doc_file = FSInputFile(file_path)

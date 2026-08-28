@@ -47,13 +47,13 @@ async def fast_download_media(url: str, extract_audio: bool = False) -> dict:
 def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
     platform = detect_platform(url)
     
-    # 1. TikTok Tikwm Engine (0.3s)
+    # 1. TikTok Tikwm Engine (Video + Barcha Karusel Rasmlar)
     if platform == "tiktok":
         res = _fetch_tiktok_tikwm(url, extract_audio)
         if res.get("success"):
             return res
 
-    # 2. Instagram Engine
+    # 2. Instagram Engine (Video + Barcha Karusel Postlar)
     if platform == "instagram":
         res = _fetch_instagram_fast(url, extract_audio)
         if res.get("success"):
@@ -100,7 +100,7 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
         if resp.status_code == 200:
             data = resp.json().get("data", {})
             if data:
-                title = data.get("title", "TikTok Video")
+                title = data.get("title", "TikTok Media")
                 if extract_audio and data.get("music"):
                     return {
                         "success": True,
@@ -110,17 +110,20 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
                         "is_image": False,
                         "platform": "tiktok"
                     }
-                images = data.get("images")
+                
+                # BARCHA Karusel rasmlarni olish (Multi-Photo Album)
+                images = data.get("images", [])
                 if images and isinstance(images, list) and len(images) > 0:
                     return {
                         "success": True,
-                        "direct_url": images[0],
-                        "images": images,
+                        "is_album": True,
+                        "media_list": [{"type": "photo", "url": img} for img in images[:10]],
                         "title": title,
                         "is_audio": False,
                         "is_image": True,
                         "platform": "tiktok"
                     }
+
                 play_url = data.get("hdplay") or data.get("play")
                 if play_url:
                     return {
@@ -150,6 +153,31 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                 if items:
                     item = items[0]
                     title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
+                    
+                    # BARCHA Karusel Postlar (Album media: video + photo)
+                    carousel = item.get("carousel_media", [])
+                    if carousel and isinstance(carousel, list) and len(carousel) > 1:
+                        media_list = []
+                        for sub in carousel[:10]:
+                            v_vers = sub.get("video_versions", [])
+                            if v_vers:
+                                media_list.append({"type": "video", "url": v_vers[0].get("url")})
+                            else:
+                                i_vers = sub.get("image_versions2", {}).get("candidates", [])
+                                if i_vers:
+                                    media_list.append({"type": "photo", "url": i_vers[0].get("url")})
+                        if media_list:
+                            return {
+                                "success": True,
+                                "is_album": True,
+                                "media_list": media_list,
+                                "title": title[:50],
+                                "is_audio": False,
+                                "is_image": False,
+                                "platform": "instagram"
+                            }
+
+                    # Yagona Video post
                     video_versions = item.get("video_versions", [])
                     if video_versions:
                         return {
@@ -160,6 +188,8 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                             "is_image": False,
                             "platform": "instagram"
                         }
+                    
+                    # Yagona Rasm post
                     image_versions = item.get("image_versions2", {}).get("candidates", [])
                     if image_versions:
                         return {
