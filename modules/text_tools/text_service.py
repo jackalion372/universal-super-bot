@@ -1,8 +1,12 @@
-﻿import os
+import os
 import re
 import asyncio
 from pathlib import Path
-import edge_tts
+try:
+    import edge_tts
+except ImportError:
+    edge_tts = None
+
 from core.config import TEMP_DIR, logger
 from modules.ai.ai_engine import ask_gemini_chat
 
