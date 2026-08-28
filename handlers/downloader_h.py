@@ -51,7 +51,7 @@ async def handle_url_message(message: Message, bot: Bot):
             log_stat(message.from_user.id, "download_cache", platform)
             return
         except Exception:
-            pass # Keshlangan file_id eskorgan bo'lsa qayta yuklanadi
+            pass
 
     stop_event = asyncio.Event()
     action_task = asyncio.create_task(keep_action(bot, message.chat.id, ChatAction.RECORD_VIDEO, stop_event))
@@ -67,23 +67,27 @@ async def handle_url_message(message: Message, bot: Bot):
         await status_msg.edit_text(f"❌ <b>Kechirasiz, media yuklab olinmadi.</b>\n\n{html.escape(result.get('error', 'Noma''lum xatolik'))}", parse_mode="HTML")
         return
 
-    # 1. Instagram Karusel & TikTok Foto Slaydlar (ALBOM / MEDIA GROUP REJIMI)
+    # 1. Instagram Karusel & TikTok Foto Slaydlar (BARCHA RASMLARNI 10 TADAN ALBOM QILIB YUBORISH)
     if result.get("is_album") and result.get("media_list"):
         media_list = result["media_list"]
         safe_title = html.escape(result.get("title", "Album"))
-        album = []
+        
+        media_group = []
         for idx, item in enumerate(media_list):
             m_url = item.get("url")
             m_type = item.get("type", "photo")
             cap = f"🎬 <b>{safe_title}</b>\n\n🤖 @Mr_nafi_bot orqali yuklandi" if idx == 0 else ""
             if m_type == "video":
-                album.append(InputMediaVideo(media=URLInputFile(m_url), caption=cap, parse_mode="HTML"))
+                media_group.append(InputMediaVideo(media=URLInputFile(m_url), caption=cap, parse_mode="HTML"))
             else:
-                album.append(InputMediaPhoto(media=URLInputFile(m_url), caption=cap, parse_mode="HTML"))
+                media_group.append(InputMediaPhoto(media=URLInputFile(m_url), caption=cap, parse_mode="HTML"))
                 
-        if album:
+        if media_group:
             try:
-                await message.answer_media_group(media=album)
+                # 10 tadan bo'lib yuborish (Telegram 10 ta media guruhi limiti)
+                for i in range(0, len(media_group), 10):
+                    chunk = media_group[i:i+10]
+                    await message.answer_media_group(media=chunk)
                 await status_msg.delete()
                 log_stat(message.from_user.id, "download_album", platform)
                 return

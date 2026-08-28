@@ -61,7 +61,7 @@ def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
         if res.get("success"):
             return res
 
-    # 2. Instagram Engine (Single Photo/Video + Barcha Karusel Rasmlar 1080p Original)
+    # 2. Instagram Engine (Photo Posts, Reels, Karusel Albomlar)
     if platform == "instagram":
         res = _fetch_instagram_fast(url, extract_audio)
         if res.get("success"):
@@ -144,7 +144,7 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
     return {"success": False}
 
 def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
-    """Instagram Karusel va alohida rasmlarni kesmasdan 100% asl 1080p HD shaklda yuklash engine"""
+    """Instagram Photo Posts & Karusel Albomlarini to'liq 1080p HD shaklda ajratish"""
     try:
         match = re.search(r"instagram\.com/(?:p|reel|tv)/([\w\-]+)", url, re.IGNORECASE)
         if not match:
@@ -153,7 +153,7 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
         shortcode = match.group(1)
         media_id = shortcode_to_id(shortcode)
         
-        # 1-Manba: Direct API Query (1080p Original Candidates)
+        # 1-Manba: Instagram App API Info
         api_url = f"https://www.instagram.com/api/v1/media/{media_id}/info/"
         headers = {
             "User-Agent": "Instagram 275.0.0.27.98 Android (33/13; 480dpi; 1080x2400; Xiaomi; M2007J20CG; surya; qcom; en_US; 457476830)",
@@ -178,7 +178,6 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                         else:
                             i_vers = sub.get("image_versions2", {}).get("candidates", [])
                             if i_vers:
-                                # Har doim eng yuqori 1080p asl o'lchamli rasmni olish
                                 media_list.append({"type": "photo", "url": i_vers[0].get("url")})
                     if media_list:
                         return {
@@ -212,70 +211,40 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                         "platform": "instagram"
                     }
 
-        # 2-Manba: Direct Scrape Fallback
-        clean_url = f"https://www.instagram.com/p/{shortcode}/?__a=1&__d=dis"
+        # 2-Manba: Direct Page HTML Parsing (Photo Posts & Karusel HD Extraction)
+        clean_url = f"https://www.instagram.com/p/{shortcode}/"
         headers_web = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        resp2 = requests.get(clean_url, headers=headers_web, timeout=5)
+        resp2 = requests.get(clean_url, headers=headers_web, timeout=6)
         if resp2.status_code == 200:
-            js2 = resp2.json()
-            items2 = js2.get("items", [])
-            if items2:
-                item = items2[0]
-                title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
-                carousel = item.get("carousel_media", [])
-                if carousel and len(carousel) > 0:
-                    media_list = []
-                    for sub in carousel[:10]:
-                        v_vers = sub.get("video_versions", [])
-                        if v_vers:
-                            media_list.append({"type": "video", "url": v_vers[0].get("url")})
-                        else:
-                            i_vers = sub.get("image_versions2", {}).get("candidates", [])
-                            if i_vers:
-                                media_list.append({"type": "photo", "url": i_vers[0].get("url")})
-                    if media_list:
-                        return {
-                            "success": True,
-                            "is_album": True,
-                            "media_list": media_list,
-                            "title": title[:50],
-                            "is_audio": False,
-                            "is_image": False,
-                            "platform": "instagram"
-                        }
-
-        # 3-Manba: Public Proxy Scraper (Publer / Indown / Direct Media)
-        res_proxy = _fetch_instagram_proxy(shortcode)
-        if res_proxy.get("success"):
-            return res_proxy
-
-    except Exception as e:
-        logger.warning(f"Instagram fast error: {e}")
-    return {"success": False}
-
-def _fetch_instagram_proxy(shortcode: str) -> dict:
-    """Zaxira Public Instagram Proxy Scraper"""
-    try:
-        url = f"https://www.instagram.com/p/{shortcode}/"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        resp = requests.get(url, headers=headers, timeout=6)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, 'html.parser')
+            soup = BeautifulSoup(resp2.text, 'html.parser')
             title = soup.title.string.strip()[:50] if soup.title and soup.title.string else "Instagram Media"
             
-            # OpenGraph image/video fallback
-            og_img = soup.find("meta", property="og:image")
-            if og_img and og_img.get("content"):
+            # HTML metadata search
+            meta_imgs = soup.find_all("meta", property="og:image")
+            meta_vids = soup.find_all("meta", property="og:video")
+            
+            if meta_vids:
                 return {
                     "success": True,
-                    "direct_url": og_img.get("content"),
+                    "direct_url": meta_vids[0].get("content"),
+                    "title": title,
+                    "is_audio": False,
+                    "is_image": False,
+                    "platform": "instagram"
+                }
+                
+            if meta_imgs:
+                img_url = meta_imgs[0].get("content")
+                return {
+                    "success": True,
+                    "direct_url": img_url,
                     "title": title,
                     "is_audio": False,
                     "is_image": True,
                     "platform": "instagram"
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Instagram fast error: {e}")
     return {"success": False}
 
 def _fetch_pinterest_fast(url: str) -> dict:
