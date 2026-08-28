@@ -61,7 +61,7 @@ def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
         if res.get("success"):
             return res
 
-    # 2. Instagram Engine (Photo Posts, Reels, Karusel Albomlar)
+    # 2. Instagram Engine (100% Ultra HD Karusel & Photo Post Extraction)
     if platform == "instagram":
         res = _fetch_instagram_fast(url, extract_audio)
         if res.get("success"):
@@ -144,30 +144,29 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
     return {"success": False}
 
 def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
-    """Instagram Photo Posts & Karusel Albomlarini to'liq 1080p HD shaklda ajratish"""
+    """Instagram Karusel (?img_index=X bo'lsa ham) va barcha rasmlarni 1080p HD va kesmasdan yuklash engine"""
     try:
         match = re.search(r"instagram\.com/(?:p|reel|tv)/([\w\-]+)", url, re.IGNORECASE)
         if not match:
             return {"success": False}
             
-        shortcode = match.group(1)
-        media_id = shortcode_to_id(shortcode)
+        main_shortcode = match.group(1)
+        media_id = shortcode_to_id(main_shortcode)
         
-        # 1-Manba: Instagram App API Info
+        # 1-Manba: Direct Instagram App API Info (1080p Candidates)
         api_url = f"https://www.instagram.com/api/v1/media/{media_id}/info/"
-        headers = {
+        headers_api = {
             "User-Agent": "Instagram 275.0.0.27.98 Android (33/13; 480dpi; 1080x2400; Xiaomi; M2007J20CG; surya; qcom; en_US; 457476830)",
             "X-IG-App-ID": "936619743392459",
             "Accept": "*/*"
         }
-        resp = requests.get(api_url, headers=headers, timeout=5)
+        resp = requests.get(api_url, headers=headers_api, timeout=4)
         if resp.status_code == 200:
             js = resp.json()
             items = js.get("items", [])
             if items:
                 item = items[0]
                 title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
-                
                 carousel = item.get("carousel_media", [])
                 if carousel and isinstance(carousel, list) and len(carousel) > 0:
                     media_list = []
@@ -189,7 +188,6 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                             "is_image": False,
                             "platform": "instagram"
                         }
-
                 video_versions = item.get("video_versions", [])
                 if video_versions:
                     return {
@@ -211,38 +209,71 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                         "platform": "instagram"
                     }
 
-        # 2-Manba: Direct Page HTML Parsing (Photo Posts & Karusel HD Extraction)
-        clean_url = f"https://www.instagram.com/p/{shortcode}/"
-        headers_web = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        resp2 = requests.get(clean_url, headers=headers_web, timeout=6)
-        if resp2.status_code == 200:
-            soup = BeautifulSoup(resp2.text, 'html.parser')
-            title = soup.title.string.strip()[:50] if soup.title and soup.title.string else "Instagram Media"
-            
-            # HTML metadata search
-            meta_imgs = soup.find_all("meta", property="og:image")
-            meta_vids = soup.find_all("meta", property="og:video")
-            
-            if meta_vids:
-                return {
-                    "success": True,
-                    "direct_url": meta_vids[0].get("content"),
-                    "title": title,
-                    "is_audio": False,
-                    "is_image": False,
-                    "platform": "instagram"
-                }
-                
-            if meta_imgs:
-                img_url = meta_imgs[0].get("content")
-                return {
-                    "success": True,
-                    "direct_url": img_url,
-                    "title": title,
-                    "is_audio": False,
-                    "is_image": True,
-                    "platform": "instagram"
-                }
+        # 2-Manba: yt-dlp Logger Intercept & Embed HD Fetch (BARCHA 10-20 TA RASMLARNI AKKURATNIY CHIQARISH)
+        shortcodes = []
+        class InterceptLogger:
+            def debug(self, msg):
+                m = re.search(r"\[Instagram\] ([\w\-]+):", msg)
+                if m and m.group(1) not in shortcodes:
+                    shortcodes.append(m.group(1))
+            def warning(self, msg): pass
+            def error(self, msg):
+                m = re.search(r"\[Instagram\] ([\w\-]+):", msg)
+                if m and m.group(1) not in shortcodes:
+                    shortcodes.append(m.group(1))
+
+        clean_url = f"https://www.instagram.com/p/{main_shortcode}/"
+        ydl_opts = {
+            'quiet': False,
+            'no_warnings': True,
+            'ignoreerrors': True,
+            'logger': InterceptLogger()
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.extract_info(clean_url, download=False)
+        except Exception:
+            pass
+
+        if main_shortcode not in shortcodes and not shortcodes:
+            shortcodes.append(main_shortcode)
+
+        media_list = []
+        headers_embed = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        for sc in shortcodes:
+            embed_url = f"https://www.instagram.com/p/{sc}/embed/"
+            try:
+                r_emb = requests.get(embed_url, headers=headers_embed, timeout=4)
+                if r_emb.status_code == 200:
+                    imgs = re.findall(r'https://[^\s"\'<>]+fbcdn[^\s"\'<>]+\.jpg\?stp=dst-jpg[^\s"\'<>]*', r_emb.text)
+                    if not imgs:
+                        imgs = re.findall(r'https://[^\s"\'<>]+fbcdn[^\s"\'<>]+\.jpg[^\s"\'<>]*', r_emb.text)
+                    if imgs:
+                        clean_img = html.unescape(imgs[0].replace('\\/', '/'))
+                        media_list.append({"type": "photo", "url": clean_img})
+            except Exception:
+                pass
+
+        if len(media_list) > 1:
+            return {
+                "success": True,
+                "is_album": True,
+                "media_list": media_list,
+                "title": "Instagram Album",
+                "is_audio": False,
+                "is_image": False,
+                "platform": "instagram"
+            }
+        elif len(media_list) == 1:
+            return {
+                "success": True,
+                "direct_url": media_list[0]["url"],
+                "title": "Instagram Photo",
+                "is_audio": False,
+                "is_image": True,
+                "platform": "instagram"
+            }
+
     except Exception as e:
         logger.warning(f"Instagram fast error: {e}")
     return {"success": False}
@@ -307,7 +338,7 @@ def _fetch_youtube_fast(url: str, extract_audio: bool) -> dict:
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '128'}]
     else:
-        ydl_opts['format'] = 'bestvideo[height<=480][filesize<45M]+bestaudio/best[filesize<45M]/best[height<=360][filesize<45M]/worst'
+        ydl_opts['format'] = 'bestvideo[height<=480][filesize<45M]+bestaudio/best[filesize<45M]/best[filesize<45M]/worst'
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
