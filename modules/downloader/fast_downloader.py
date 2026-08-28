@@ -55,7 +55,7 @@ async def fast_download_media(url: str, extract_audio: bool = False) -> dict:
 def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
     platform = detect_platform(url)
     
-    # 1. TikTok Engine (Video + Barcha Karusel Rasmlar)
+    # 1. TikTok Engine
     if platform == "tiktok":
         res = _fetch_tiktok_tikwm(url, extract_audio)
         if res.get("success"):
@@ -144,7 +144,7 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
     return {"success": False}
 
 def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
-    """Instagram Karusel va alohida rasmlarni kesmasdan 100% asl 1080p HD shaklda yuklash"""
+    """Instagram Karusel va alohida rasmlarni kesmasdan 100% asl 1080p HD shaklda yuklash engine"""
     try:
         match = re.search(r"instagram\.com/(?:p|reel|tv)/([\w\-]+)", url, re.IGNORECASE)
         if not match:
@@ -153,7 +153,7 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
         shortcode = match.group(1)
         media_id = shortcode_to_id(shortcode)
         
-        # 1-Manba: Direct API Info Query
+        # 1-Manba: Direct API Query (1080p Original Candidates)
         api_url = f"https://www.instagram.com/api/v1/media/{media_id}/info/"
         headers = {
             "User-Agent": "Instagram 275.0.0.27.98 Android (33/13; 480dpi; 1080x2400; Xiaomi; M2007J20CG; surya; qcom; en_US; 457476830)",
@@ -168,7 +168,6 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                 item = items[0]
                 title = item.get("caption", {}).get("text", "Instagram Media") if item.get("caption") else "Instagram Media"
                 
-                # BARCHA Karusel rasmlarni yig'ish (1080p Original Full HD Resolution)
                 carousel = item.get("carousel_media", [])
                 if carousel and isinstance(carousel, list) and len(carousel) > 0:
                     media_list = []
@@ -244,8 +243,39 @@ def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
                             "is_image": False,
                             "platform": "instagram"
                         }
+
+        # 3-Manba: Public Proxy Scraper (Publer / Indown / Direct Media)
+        res_proxy = _fetch_instagram_proxy(shortcode)
+        if res_proxy.get("success"):
+            return res_proxy
+
     except Exception as e:
         logger.warning(f"Instagram fast error: {e}")
+    return {"success": False}
+
+def _fetch_instagram_proxy(shortcode: str) -> dict:
+    """Zaxira Public Instagram Proxy Scraper"""
+    try:
+        url = f"https://www.instagram.com/p/{shortcode}/"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        resp = requests.get(url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            title = soup.title.string.strip()[:50] if soup.title and soup.title.string else "Instagram Media"
+            
+            # OpenGraph image/video fallback
+            og_img = soup.find("meta", property="og:image")
+            if og_img and og_img.get("content"):
+                return {
+                    "success": True,
+                    "direct_url": og_img.get("content"),
+                    "title": title,
+                    "is_audio": False,
+                    "is_image": True,
+                    "platform": "instagram"
+                }
+    except Exception:
+        pass
     return {"success": False}
 
 def _fetch_pinterest_fast(url: str) -> dict:
