@@ -1,15 +1,20 @@
-﻿import os
+import os
 import asyncio
 import subprocess
 import uuid
 from pathlib import Path
-from shazamio import Shazam
-import yt_dlp
-import imageio_ffmpeg
-from core.config import TEMP_DIR, DOWNLOADS_DIR, logger
+try:
+    from shazamio import Shazam
+    shazam = Shazam()
+except Exception as e:
+    shazam = None
 
-FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
-shazam = Shazam()
+try:
+    import imageio_ffmpeg
+    FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+except Exception:
+    FFMPEG_EXE = "ffmpeg"
+
 
 async def recognize_song_from_file(file_path: str) -> dict:
     converted_path = str(TEMP_DIR / f"converted_{uuid.uuid4().hex[:8]}.mp3")
