@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 import asyncio
 import subprocess
@@ -19,7 +19,7 @@ async def convert_video_to_round_note(input_path: str) -> str:
     cmd = [
         FFMPEG_EXE, "-y",
         "-i", input_path,
-        "-vf", "crop=min(iw\\,ih):min(iw\\,ih),scale=480:480",
+        "-vf", "crop=ih:ih,scale=480:480",
         "-c:v", "libx264",
         "-crf", "26",
         "-preset", "ultrafast",
@@ -28,6 +28,7 @@ async def convert_video_to_round_note(input_path: str) -> str:
         "-t", "60",
         output_path
     ]
+
     
     try:
         proc = await asyncio.create_subprocess_exec(

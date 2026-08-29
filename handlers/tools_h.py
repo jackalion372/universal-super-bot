@@ -190,7 +190,7 @@ async def handle_tool_photos(message: Message, bot: Bot):
         if mode != "mode_pdf_combined" and os.path.exists(temp_in):
             os.remove(temp_in)
 
-@router.message(F.video)
+@router.message(F.video | F.video_note)
 async def handle_tool_videos(message: Message, bot: Bot):
     user_id = message.from_user.id
     mode = get_user_mode(user_id)
@@ -200,8 +200,10 @@ async def handle_tool_videos(message: Message, bot: Bot):
     
     temp_vid = str(TEMP_DIR / f"vid_{uuid.uuid4().hex[:8]}.mp4")
     try:
-        tg_file = await bot.get_file(message.video.file_id)
+        vid_id = message.video.file_id if message.video else message.video_note.file_id
+        tg_file = await bot.get_file(vid_id)
         await bot.download_file(tg_file.file_path, temp_vid)
+
         
         if mode == "mode_compress":
             status = await message.answer("📦 **Video sifatini saqlab siqilmoqda...**", parse_mode="Markdown")
