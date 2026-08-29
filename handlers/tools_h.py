@@ -312,11 +312,15 @@ async def handle_pdf_done(message: Message, bot: Bot):
     else:
         await message.answer("⚠️ Hali hech qanday rasm yuklanmagan.")
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id).startswith("mode_"))
+@router.message(F.text)
 async def handle_tool_text_inputs(message: Message, bot: Bot):
     user_id = message.from_user.id
     mode = get_user_mode(user_id)
+    if not mode.startswith("mode_"):
+        return
+
     text = message.text.strip()
+
     
     if mode == "mode_lat2cyr":
         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)

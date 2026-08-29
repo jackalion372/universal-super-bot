@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import html
 import hashlib
@@ -64,8 +64,10 @@ async def handle_url_message(message: Message, bot: Bot):
         await action_task
         
     if not result.get("success"):
-        await status_msg.edit_text(f"❌ <b>Kechirasiz, media yuklab olinmadi.</b>\n\n{html.escape(result.get('error', 'Noma''lum xatolik'))}", parse_mode="HTML")
+        err_msg = result.get("error", "Noma'lum xatolik")
+        await status_msg.edit_text(f"❌ <b>Kechirasiz, media yuklab olinmadi.</b>\n\n{html.escape(err_msg)}", parse_mode="HTML")
         return
+
 
     # 1. Instagram Karusel & TikTok Foto Slaydlar (BARCHA RASMLARNI 10 TADAN ALBOM QILIB YUBORISH)
     if result.get("is_album") and result.get("media_list"):
