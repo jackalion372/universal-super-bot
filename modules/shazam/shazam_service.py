@@ -106,26 +106,18 @@ async def search_and_download_music(query: str) -> dict:
     return await loop.run_in_executor(None, _sync_music_search_and_download, query)
 
 def _sync_music_search_and_download(query: str) -> dict:
+    import glob
     file_id = uuid.uuid4().hex[:8]
-    out_template = str(DOWNLOADS_DIR / f"{file_id}_%(title).50s.%(ext)s")
+    out_template = str(DOWNLOADS_DIR / f"{file_id}.%(ext)s")
     
     ydl_opts = {
-        'format': 'ba/b',
+        'format': 'bestaudio/best',
         'outtmpl': out_template,
         'noplaylist': True,
         'quiet': True,
         'no_warnings': True,
         'default_search': 'ytsearch1',
-        'ffmpeg_location': FFMPEG_EXE,
-        'concurrent_fragment_downloads': 8,
-        'buffersize': 1048576,
-        'http_chunk_size': 10485760,
-        'socket_timeout': 5,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        'socket_timeout': 10,
     }
     
     try:
@@ -138,18 +130,38 @@ def _sync_music_search_and_download(query: str) -> dict:
             
             title = entry.get('title', query)
             duration = entry.get('duration', 0)
+            artist = entry.get('uploader', "Artist")
             
-            target_files = list(DOWNLOADS_DIR.glob(f"{file_id}_*.mp3"))
-            if not target_files:
-                return {"success": False, "error": "Musiqa yuklanmadi"}
+            raw_files = glob.glob(str(DOWNLOADS_DIR / f"{file_id}.*"))
+            if not raw_files:
+                return {"success": False, "error": "Musiqa fayli topilmadi"}
+                
+            raw_path = raw_files[0]
+            final_mp3_path = str(DOWNLOADS_DIR / f"{file_id}_final.mp3")
+            
+            if raw_path != final_mp3_path:
+                cmd = [
+                    FFMPEG_EXE, "-y", "-i", raw_path,
+                    "-vn", "-ar", "44100", "-ac", "2", "-b:a", "192k",
+                    final_mp3_path
+                ]
+                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+                if os.path.exists(raw_path):
+                    try:
+                        os.remove(raw_path)
+                    except OSError:
+                        pass
+                        
+            target_path = final_mp3_path if os.path.exists(final_mp3_path) else raw_path
             
             return {
                 "success": True,
-                "file_path": str(target_files[0]),
+                "file_path": target_path,
                 "title": title,
                 "duration": duration,
-                "artist": entry.get('uploader', "Artist")
+                "artist": artist
             }
     except Exception as e:
         logger.error(f"Music search/download error for {query}: {e}")
         return {"success": False, "error": str(e)}
+
