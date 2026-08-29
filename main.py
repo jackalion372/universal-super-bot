@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import os
 import time
 import requests
@@ -12,7 +12,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 
 from core.config import BOT_TOKEN, DOWNLOADS_DIR, TEMP_DIR, logger
 from core.database import init_db
-from handlers import start, admin_h, downloader_h, shazam_h, ai_h, tools_h
+from handlers import start, admin_h, downloader_h, shazam_h, ai_h, tools_h, student_h
 
 async def handle_health_check(request):
     return web.Response(text="Universal Super Bot is Running Live 24/7 Cloud!")
@@ -72,10 +72,12 @@ async def main():
 
     dp.include_router(admin_h.router)
     dp.include_router(start.router)
+    dp.include_router(student_h.router)
     dp.include_router(tools_h.router)
     dp.include_router(downloader_h.router)
     dp.include_router(shazam_h.router)
     dp.include_router(ai_h.router)
+
 
     asyncio.create_task(periodic_cleanup())
 
