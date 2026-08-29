@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 import asyncio
 from pathlib import Path
@@ -11,6 +11,8 @@ from modules.media_tools.media_service import remove_background, compress_image,
 from modules.converters.converter_service import images_to_pdf, image_to_single_pdf, create_zip_archive, extract_zip_archive
 from modules.text_tools.text_service import latin_to_cyrillic, cyrillic_to_latin, text_to_speech, smart_translate, check_grammar
 from modules.utility_tools.utility_service import generate_qr_code, read_qr_code, get_cbu_currency_rates
+from modules.tools.video_note_service import convert_video_to_round_note
+
 from keyboards.main_kb import get_cancel_keyboard, get_main_menu_keyboard
 from keyboards.inline_kb import get_translator_lang_keyboard, get_pdf_type_keyboard
 
@@ -62,7 +64,9 @@ async def handle_tool_callback(callback: CallbackQuery):
         "rembg": ("mode_rembg", "✂️ **Fonni o'chirish rejimi.**\n\nIltimos, fonini olib tashlamoqchi bo'lgan rasmni yuboring:"),
         "ocr": ("mode_ocr", "📝 **OCR (Matn ajratish) rejimi.**\n\nKitob, daftar yoki yozuvli rasm yuboring:"),
         "compress": ("mode_compress", "📦 **Siqish (Compress) rejimi.**\n\nHajmini sifatini saqlab kichraytirmoqchi bo'lgan **rasm yoki video**ni yuboring:"),
+        "vid2note": ("mode_vid2note", "🎥 ➡️ ⭕️ **Videoni Dumaloq Video Note qilish rejimi.**\n\nDumaloq video (Video Message) qilmoqchi bo'lgan videongizni yuboring:"),
         "vid2mp3": ("mode_vid2mp3", "🎥 **Video -> MP3 rejimi.**\n\nAudiosini ajratib olmoqchi bo'lgan videoni yuboring:"),
+
         "zip": ("mode_zip", "📦 **ZIP Arxiv rejimi.**\n\nArxivlamoqchi bo'lgan fayl/rasmni yoki ochmoqchi bo'lgan `.zip` faylni yuboring:"),
         "lat2cyr": ("mode_lat2cyr", "🔤 **Lotin ➡️ Kirill rejimi.**\n\nLotin alifbosidagi matnni yuboring:"),
         "cyr2lat": ("mode_cyr2lat", "🔤 **Kirill ➡️ Lotin rejimi.**\n\nKirill alifbosidagi matnni yuboring:"),
@@ -211,7 +215,21 @@ async def handle_tool_videos(message: Message, bot: Bot):
                 os.remove(temp_out)
             await status.delete()
             
+        elif mode == "mode_vid2note":
+            status = await message.answer("🎥 **Videongiz 1:1 kvadrat Telegram Dumaloq Video Note shakliga keltirilmoqda...**", parse_mode="Markdown")
+            vnote_path = await convert_video_to_round_note(temp_vid)
+            await status.delete()
+            if vnote_path and os.path.exists(vnote_path):
+                vnote_file = FSInputFile(vnote_path)
+                await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.RECORD_VIDEO_NOTE)
+                await message.answer_video_note(video_note=vnote_file)
+                if os.path.exists(vnote_path):
+                    os.remove(vnote_path)
+            else:
+                await message.answer("❌ Videoni dumaloq qilishda xatolik yuz berdi.")
+
         elif mode == "mode_vid2mp3":
+
             status = await message.answer("🎵 **Audio ajratib olinmoqda...**", parse_mode="Markdown")
             temp_audio = str(TEMP_DIR / f"audio_{uuid.uuid4().hex[:8]}.mp3")
             if video_to_mp3(temp_vid, temp_audio):

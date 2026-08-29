@@ -1,4 +1,4 @@
-﻿from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 def get_media_tools_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -7,10 +7,14 @@ def get_media_tools_keyboard():
             InlineKeyboardButton(text="📝 OCR (Yozuvni matnga)", callback_data="tool_ocr")
         ],
         [
-            InlineKeyboardButton(text="📦 Rasm / Video Siqish", callback_data="tool_compress"),
+            InlineKeyboardButton(text="🎥 ➡️ ⭕️ Videoni Dumaloq qilish", callback_data="tool_vid2note"),
             InlineKeyboardButton(text="🎥 Video -> MP3", callback_data="tool_vid2mp3")
+        ],
+        [
+            InlineKeyboardButton(text="📦 Rasm / Video Siqish", callback_data="tool_compress")
         ]
     ])
+
 
 def get_file_tools_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
