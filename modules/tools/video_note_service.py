@@ -41,18 +41,19 @@ async def convert_video_to_round_note_with_progress(input_path: str, progress_ca
     cmd = [
         FFMPEG_EXE, "-y",
         "-i", input_path,
-        "-vf", "crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,scale='min(720,min(iw,ih))':'min(720,min(iw,ih))'",
+        "-vf", "crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,scale=360:360",
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-tune", "zerolatency",
-        "-crf", "24",
+        "-crf", "26",
         "-threads", "0",
         "-c:a", "aac",
-        "-b:a", "128k",
+        "-b:a", "96k",
         "-t", "60",
         "-progress", "pipe:1",
         output_path
     ]
+
 
 
 
