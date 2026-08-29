@@ -3,6 +3,8 @@ import uuid
 import asyncio
 from pathlib import Path
 from aiogram import Router, F, Bot
+from aiogram.filters import Command
+
 from aiogram.enums import ChatAction
 from aiogram.types import Message, CallbackQuery, FSInputFile
 from core.config import TEMP_DIR
@@ -114,6 +116,9 @@ async def handle_pdf_choice(callback: CallbackQuery):
 async def handle_tool_photos(message: Message, bot: Bot):
     user_id = message.from_user.id
     mode = get_user_mode(user_id)
+    if mode not in ["mode_rembg", "mode_ocr", "mode_compress", "mode_pdf_single", "mode_pdf_combined", "mode_readqr", "mode_zip"]:
+        return
+        
     photo = message.photo[-1]
     
     stop_event = asyncio.Event()
@@ -127,12 +132,14 @@ async def handle_tool_photos(message: Message, bot: Bot):
         if mode == "mode_rembg":
             status = await message.answer("✂️ **Fon o'chirilmoqda...**", parse_mode="Markdown")
             temp_out = str(TEMP_DIR / f"nobg_{uuid.uuid4().hex[:8]}.png")
-            success = remove_background(temp_in, temp_out)
+            loop = asyncio.get_event_loop()
+            success = await loop.run_in_executor(None, remove_background, temp_in, temp_out)
             if success and os.path.exists(temp_out):
                 doc_file = FSInputFile(temp_out, filename="no_background.png")
                 await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_DOCUMENT)
                 await message.answer_document(document=doc_file, caption="✅ **Fon muvaffaqiyatli olib tashlandi!**")
                 os.remove(temp_out)
+
             else:
                 await message.answer("⚠️ Fonni olib tashlashda xatolik yuz berdi.")
             await status.delete()
@@ -194,6 +201,9 @@ async def handle_tool_photos(message: Message, bot: Bot):
 async def handle_tool_videos(message: Message, bot: Bot):
     user_id = message.from_user.id
     mode = get_user_mode(user_id)
+    if mode not in ["mode_compress", "mode_vid2note", "mode_vid2mp3"]:
+        return
+
     
     stop_event = asyncio.Event()
     action_task = asyncio.create_task(keep_action(bot, message.chat.id, ChatAction.RECORD_VIDEO, stop_event))
@@ -291,26 +301,38 @@ async def handle_tool_documents(message: Message, bot: Bot):
 
 # ==================== TEXT INPUTS & COMMANDS ====================
 
+@router.message(Command("done"))
 @router.message(F.text == "/done")
 @router.message(F.text.lower() == "tayyor")
 async def handle_pdf_done(message: Message, bot: Bot):
     user_id = message.from_user.id
-    if user_id in USER_DATA_STORE and USER_DATA_STORE[user_id]:
-        status = await message.answer("📄 **Barcha rasmlar bitta PDF ga jamlanmoqda...**", parse_mode="Markdown")
+    mode = get_user_mode(user_id)
+    
+    if mode == "mode_pdf_combined":
+        images = USER_DATA_STORE.get(user_id, [])
+        if not images:
+            await message.answer("⚠️ Hech qanday rasm yuklanmagan.")
+            return
+            
+        status = await message.answer(f"📄 **{len(images)} ta rasmdan PDF yaratilmoqda...**", parse_mode="Markdown")
         temp_pdf = str(TEMP_DIR / f"combined_{uuid.uuid4().hex[:8]}.pdf")
-        img_paths = USER_DATA_STORE[user_id]
-        if images_to_pdf(img_paths, temp_pdf):
-            doc_file = FSInputFile(temp_pdf, filename="all_images.pdf")
-            await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_DOCUMENT)
-            await message.answer_document(document=doc_file, caption=f"✅ **{len(img_paths)} ta rasm bitta PDF ga birlashtirildi!**")
-            os.remove(temp_pdf)
-        for p in img_paths:
-            if os.path.exists(p):
-                os.remove(p)
-        USER_DATA_STORE[user_id] = []
-        await status.delete()
-    else:
-        await message.answer("⚠️ Hali hech qanday rasm yuklanmagan.")
+        try:
+            if images_to_pdf(images, temp_pdf):
+                doc_file = FSInputFile(temp_pdf, filename="combined.pdf")
+                await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_DOCUMENT)
+                await message.answer_document(document=doc_file, caption=f"✅ **{len(images)} ta rasmdan PDF jamlandi!**")
+            else:
+                await message.answer("❌ PDF yaratishda xatolik yuz berdi.")
+        finally:
+            await status.delete()
+            for img in images:
+                if os.path.exists(img):
+                    os.remove(img)
+            if os.path.exists(temp_pdf):
+                os.remove(temp_pdf)
+            USER_DATA_STORE.pop(user_id, None)
+            set_user_mode(user_id, "general")
+
 
 @router.message(F.text)
 async def handle_tool_text_inputs(message: Message, bot: Bot):
