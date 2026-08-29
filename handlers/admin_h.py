@@ -197,106 +197,84 @@ async def handle_broadcast_prompt(event: Message | CallbackQuery):
         await event.answer(msg_txt, parse_mode="Markdown")
 
 @router.message(F.text | F.photo | F.video)
-async def handle_broadcast_execution(message: Message, bot: Bot):
-    if not is_admin(message.from_user.id):
-        return
-    if get_user_mode(message.from_user.id) != "admin_broadcast_mode":
-        return
-        
-    if message.text == "/cancel":
-        set_user_mode(message.from_user.id, "general")
-        await message.answer("❌ Rassilka bekor qilindi.")
+async def handle_admin_text_inputs(message: Message, bot: Bot):
+    user_id = message.from_user.id
+    if not is_admin(user_id):
         return
         
-    set_user_mode(message.from_user.id, "general")
-    user_ids = get_all_user_ids()
-    total = len(user_ids)
+    mode = get_user_mode(user_id)
     
-    status = await message.answer(f"🚀 **Rassilka boshlandi...**\nJami foydalanuvchilar: {total} ta")
-    
-    sent_count = 0
-    blocked_count = 0
-    
-    for uid in user_ids:
-        try:
-            await message.copy_to(chat_id=uid)
-            sent_count += 1
-            await asyncio.sleep(0.04)
-        except Exception:
-            blocked_count += 1
+    if mode == "admin_broadcast_mode":
+        if message.text == "/cancel":
+            set_user_mode(user_id, "general")
+            await message.answer("❌ Rassilka bekor qilindi.")
+            return
             
-    await status.edit_text(
-        f"✅ **Rassilka muvaffaqiyatli yakunlandi!**\n\n"
-        f"📤 **Yuborildi:** `{sent_count}` ta\n"
-        f"🚫 **Yetib bormadi (bloklagan):** `{blocked_count}` ta\n"
-        f"👥 **Jami:** `{total}` ta",
-        parse_mode="Markdown"
-    )
-
-# ==================== ADD CHANNEL INPUT HANDLER ====================
-
-@router.message(F.text)
-async def handle_channel_text(message: Message, bot: Bot):
-    if not is_admin(message.from_user.id):
-        return
-    if get_user_mode(message.from_user.id) != "admin_add_channel_mode":
-        return
+        set_user_mode(user_id, "general")
+        user_ids = get_all_user_ids()
+        total = len(user_ids)
         
-    raw = message.text.strip()
-    username = raw.replace("https://t.me/", "").replace("@", "")
-    ch_target = f"@{username}"
-    
-    try:
-        chat = await bot.get_chat(ch_target)
-        title = chat.title or ch_target
-        url = f"https://t.me/{username}"
-        ch_id = str(chat.id)
+        status = await message.answer(f"🚀 **Rassilka boshlandi...**\nJami foydalanuvchilar: {total} ta", parse_mode="Markdown")
+        sent_count = 0
+        blocked_count = 0
         
-        if add_channel(ch_id, title, url):
-            set_user_mode(message.from_user.id, "general")
-            await message.answer(f"✅ **Kanal muvaffaqiyatli qo'shildi!**\n\n📢 **Nomi:** {title}\n🔗 **Havola:** {url}", parse_mode="Markdown")
-        else:
-            await message.answer("⚠️ Bu kanal allaqachon qo'shilgan.")
-    except Exception as e:
-        await message.answer(f"❌ Kanalni tekshirib bo'lmadi: {e}\nIltimos, bot kanalda Admin ekanligiga ishonch hosil qiling.")
-
-# ==================== ADMIN REPLY TO USER FEEDBACK ====================
-
-@router.callback_query(F.data.startswith("reply_user_"))
-async def handle_reply_user_callback(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        return
-        
-    target_id = int(callback.data.replace("reply_user_", ""))
-    ADMIN_REPLY_TARGET[callback.from_user.id] = target_id
-    set_user_mode(callback.from_user.id, "admin_reply_user_mode")
-    
-    await callback.message.answer(f"✍️ **Foydalanuvchiga (ID: `{target_id}`) javobingizni yozing:**", parse_mode="Markdown")
-    await callback.answer()
-
-@router.message(F.text)
-async def handle_admin_reply_send(message: Message, bot: Bot):
-    if not is_admin(message.from_user.id):
-        return
-    if get_user_mode(message.from_user.id) != "admin_reply_user_mode":
-        return
-        
-    target_id = ADMIN_REPLY_TARGET.get(message.from_user.id)
-    if not target_id:
-        set_user_mode(message.from_user.id, "general")
-        await message.answer("⚠️ Foydalanuvchi topilmadi.")
-        return
-        
-    try:
-        reply_txt = (
-            "📩 **Admin javobi:**\n\n"
-            f"{message.text}\n\n"
-            "💬 *Savolingiz bo'lsa, 'Adminga Murojaat' orqali yana yozishingiz mumkin.*"
+        for uid in user_ids:
+            try:
+                await message.copy_to(chat_id=uid)
+                sent_count += 1
+                await asyncio.sleep(0.04)
+            except Exception:
+                blocked_count += 1
+                
+        await status.edit_text(
+            f"✅ **Rassilka muvaffaqiyatli yakunlandi!**\n\n"
+            f"📤 **Yuborildi:** `{sent_count}` ta\n"
+            f"🚫 **Yetib bormadi (bloklagan):** `{blocked_count}` ta\n"
+            f"👥 **Jami:** `{total}` ta",
+            parse_mode="Markdown"
         )
-        await bot.send_message(chat_id=target_id, text=reply_txt, parse_mode="Markdown")
-        await message.answer(f"✅ **Javob foydalanuvchiga (ID: `{target_id}`) muvaffaqiyatli yetkazildi!**")
-    except Exception as e:
-        await message.answer(f"❌ Xabarni yetkazishda xatolik: {e}")
-    finally:
-        set_user_mode(message.from_user.id, "general")
+
+    elif mode == "admin_add_channel_mode":
+        if not message.text:
+            return
+        raw = message.text.strip()
+        username = raw.replace("https://t.me/", "").replace("@", "").strip("/")
+        ch_target = f"@{username}"
+        
+        try:
+            chat = await bot.get_chat(ch_target)
+            title = chat.title or ch_target
+            url = f"https://t.me/{username}"
+            ch_id = str(chat.id)
+            
+            if add_channel(ch_id, title, url):
+                set_user_mode(user_id, "general")
+                await message.answer(f"✅ **Kanal muvaffaqiyatli qo'shildi!**\n\n📢 **Nomi:** {title}\n🔗 **Havola:** {url}", parse_mode="Markdown")
+            else:
+                await message.answer("⚠️ Bu kanal allaqachon qo'shilgan.")
+        except Exception as e:
+            await message.answer(f"❌ Kanalni tekshirib bo'lmadi: {e}\nIltimos, bot kanalda Admin ekanligiga ishonch hosil qiling.")
+
+    elif mode == "admin_reply_user_mode":
+        if not message.text:
+            return
+        target_id = ADMIN_REPLY_TARGET.get(user_id)
+        if not target_id:
+            set_user_mode(user_id, "general")
+            await message.answer("⚠️ Foydalanuvchi topilmadi.")
+            return
+            
+        try:
+            reply_txt = (
+                "📩 **Admin javobi:**\n\n"
+                f"{message.text}\n\n"
+                "💬 *Savolingiz bo'lsa, 'Adminga Murojaat' orqali yana yozishingiz mumkin.*"
+            )
+            await bot.send_message(chat_id=target_id, text=reply_txt, parse_mode="Markdown")
+            await message.answer(f"✅ **Javob foydalanuvchiga (ID: `{target_id}`) muvaffaqiyatli yetkazildi!**")
+        except Exception as e:
+            await message.answer(f"❌ Xabarni yetkazishda xatolik: {e}")
+        finally:
+            set_user_mode(user_id, "general")
+
 

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import asyncio
 from pathlib import Path
 from aiogram import Router, F, Bot
@@ -87,7 +87,9 @@ async def handle_student_callback(callback: CallbackQuery):
 @router.message(Command("pres", "miq", "ref", "kurs", "test", "tezis", "cross", "maqola", "insho", "infografika", "sayt"))
 async def handle_student_generation_command(message: Message, bot: Bot):
     cmd = message.text.split()[0][1:].lower()
-    topic = message.text[len(cmd) + 1:].strip()
+    parts = message.text.split(maxsplit=1)
+    topic = parts[1].strip() if len(parts) > 1 else ""
+
     
     if not topic:
         title, guide = STUDENT_COMMANDS.get(cmd, ("Akademik Hujjat", "Mavzuni kiriting"))
