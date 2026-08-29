@@ -1,4 +1,4 @@
-﻿from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from core.config import ADMIN_IDS
 
 def get_main_menu_keyboard(user_id: int = 0):
@@ -9,17 +9,21 @@ def get_main_menu_keyboard(user_id: int = 0):
         ],
         [
             KeyboardButton(text="🧠 AI Yordamchi"),
-            KeyboardButton(text="🎨 Rasm Vositalari")
+            KeyboardButton(text="🎓 Student Studiyasi")
         ],
         [
-            KeyboardButton(text="📄 Fayl & PDF"),
-            KeyboardButton(text="✍️ Matn & Til")
+            KeyboardButton(text="🎨 Rasm Vositalari"),
+            KeyboardButton(text="📄 Fayl & PDF")
         ],
         [
-            KeyboardButton(text="🛠 Kundalik Asboblar"),
+            KeyboardButton(text="✍️ Matn & Til"),
+            KeyboardButton(text="🛠 Kundalik Asboblar")
+        ],
+        [
             KeyboardButton(text="📩 Adminga Murojaat")
         ]
     ]
+
     
     if user_id in ADMIN_IDS:
         keyboard.append([KeyboardButton(text="👑 Admin Panel")])

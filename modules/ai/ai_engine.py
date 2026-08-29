@@ -1,10 +1,9 @@
 import os
 import io
+from pathlib import Path
 from PIL import Image
 from core.config import GEMINI_API_KEY, logger
 from core.database import save_ai_message, get_ai_history, clear_ai_history
-
-
 
 try:
     import google.generativeai as genai
@@ -12,8 +11,6 @@ try:
         genai.configure(api_key=GEMINI_API_KEY)
 except Exception as e:
     genai = None
-
-
 
 GEMINI_SYSTEM_INSTRUCTION = """
 Siz Google tomonidan yaratilgan eng mukammal, aqlli va xushmuomala sun'iy intellektsiz (Gemini AI).
@@ -27,7 +24,7 @@ Javob berish qoidalari:
 5. Samimiy va professional uslubda muloqot qiling.
 """
 
-def get_gemini_model(model_name: str = "gemini-3.6-flash"):
+def get_gemini_model(model_name: str = "gemini-1.5-flash"):
     generation_config = {
         "temperature": 0.7,
         "top_p": 0.95,
@@ -39,6 +36,7 @@ def get_gemini_model(model_name: str = "gemini-3.6-flash"):
         system_instruction=GEMINI_SYSTEM_INSTRUCTION,
         generation_config=generation_config
     )
+
 
 async def ask_gemini_chat(user_id: int, prompt: str) -> str:
     try:
@@ -54,13 +52,14 @@ async def ask_gemini_chat(user_id: int, prompt: str) -> str:
             })
 
         try:
-            model = get_gemini_model("gemini-3.6-flash")
+            model = get_gemini_model("gemini-1.5-flash")
             chat = model.start_chat(history=formatted_history)
             response = chat.send_message(prompt)
         except Exception:
-            model = get_gemini_model("gemini-3.7-flash")
+            model = get_gemini_model("gemini-1.5-pro")
             chat = model.start_chat(history=formatted_history)
             response = chat.send_message(prompt)
+
         
         reply_text = response.text
         save_ai_message(user_id, "user", prompt)
@@ -76,11 +75,12 @@ async def ask_gemini_once(prompt: str) -> str:
         if not GEMINI_API_KEY:
             return "⚠️ Gemini API kaliti topilmadi."
         try:
-            model = get_gemini_model("gemini-3.6-flash")
+            model = get_gemini_model("gemini-1.5-flash")
             response = model.generate_content(prompt)
         except Exception:
-            model = get_gemini_model("gemini-3.7-flash")
+            model = get_gemini_model("gemini-1.5-pro")
             response = model.generate_content(prompt)
+
         return response.text
     except Exception as e:
         logger.error(f"Gemini Once error: {e}")
@@ -96,10 +96,10 @@ async def analyze_image_with_ai(user_id: int, image_path: str, prompt: str = "")
         img = Image.open(image_path)
         
         try:
-            model = get_gemini_model("gemini-3.6-flash")
+            model = get_gemini_model("gemini-1.5-flash")
             response = model.generate_content([user_prompt, img])
         except Exception:
-            model = get_gemini_model("gemini-3.7-flash")
+            model = get_gemini_model("gemini-1.5-pro")
             response = model.generate_content([user_prompt, img])
             
         reply_text = response.text
@@ -115,7 +115,8 @@ async def process_voice_with_ai(user_id: int, audio_path: str) -> str:
         if not GEMINI_API_KEY:
             return "⚠️ Gemini API kaliti topilmadi."
             
-        model = get_gemini_model("gemini-3.6-flash")
+        model = get_gemini_model("gemini-1.5-flash")
+
         audio_file = genai.upload_file(path=audio_path)
         prompt = "Ushbu ovozli xabarni eshiting va foydalanuvchining gapiga to'liq, mazmunli va foydali javob qaytaring."
         response = model.generate_content([prompt, audio_file])
