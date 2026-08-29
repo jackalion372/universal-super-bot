@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 import asyncio
 import subprocess
@@ -41,8 +41,18 @@ async def recognize_song_from_file(file_path: str) -> dict:
 
         out = await shazam.recognize(target_audio)
         track = out.get('track', {})
+        
+        # Clip topilmasa, to'liq fayldan qayta izlash
+        if not track and os.path.exists(file_path):
+            try:
+                out = await shazam.recognize(file_path)
+                track = out.get('track', {})
+            except Exception:
+                pass
+
         if not track:
             return {"success": False, "message": "Qo'shiq topilmadi"}
+
         
         title = track.get('title', "Noma'lum")
         subtitle = track.get('subtitle', "Noma'lum ijrochi")

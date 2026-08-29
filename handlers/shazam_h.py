@@ -20,8 +20,10 @@ async def keep_action(bot: Bot, chat_id: int, action: ChatAction, stop_event: as
 
 @router.message(F.voice | F.video_note | F.audio | F.video)
 async def handle_shazam_media(message: Message, bot: Bot):
-    if get_user_mode(message.from_user.id).startswith("mode_"):
+    user_mode = get_user_mode(message.from_user.id)
+    if user_mode in ["mode_vid2note", "mode_vid2mp3", "mode_rembg", "mode_ocr", "mode_compress", "mode_zip", "mode_pdf_combined", "mode_pdf_single"]:
         return
+
         
     stop_event = asyncio.Event()
     action_task = asyncio.create_task(keep_action(bot, message.chat.id, ChatAction.TYPING, stop_event))
