@@ -229,15 +229,23 @@ async def handle_tool_videos(message: Message, bot: Bot):
                     pass
 
             vnote_path = await convert_video_to_round_note_with_progress(temp_vid, update_progress)
-            await status.delete()
+            
             if vnote_path and os.path.exists(vnote_path):
+                try:
+                    await status.edit_text("⚡️ **Dumaloq Video Note tayyorlandi! 100%** [██████████]", parse_mode="Markdown")
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+                await status.delete()
                 vnote_file = FSInputFile(vnote_path)
                 await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.RECORD_VIDEO_NOTE)
                 await message.answer_video_note(video_note=vnote_file)
                 if os.path.exists(vnote_path):
                     os.remove(vnote_path)
             else:
-                await message.answer("❌ Videoni dumaloq qilishda xatolik yuz berdi.")
+                await status.delete()
+                await message.answer("❌ Videoni dumaloq qilishda xatolik yuz berdi. Iltimos, boshqa video bilan sinab ko'ring.")
+
 
 
         elif mode == "mode_vid2mp3":
