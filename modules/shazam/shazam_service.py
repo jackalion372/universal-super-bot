@@ -17,7 +17,18 @@ try:
 except Exception:
     FFMPEG_EXE = "ffmpeg"
 
-from core.config import TEMP_DIR, DOWNLOADS_DIR, logger
+try:
+    from core.config import TEMP_DIR, DOWNLOADS_DIR, logger
+except ImportError:
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    TEMP_DIR = BASE_DIR / "data" / "temp"
+    DOWNLOADS_DIR = BASE_DIR / "data" / "downloads"
+    import logging
+    logger = logging.getLogger(__name__)
+
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 async def recognize_song_from_file(file_path: str) -> dict:
     """
