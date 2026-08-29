@@ -215,12 +215,13 @@ def add_channel(channel_id: str, title: str, url: str) -> bool:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO channels (channel_id, channel_title, channel_url) VALUES (?, ?, ?)", (channel_id, title, url))
+        cursor.execute("INSERT OR REPLACE INTO channels (channel_id, channel_title, channel_url) VALUES (?, ?, ?)", (channel_id, title, url))
         conn.commit()
         conn.close()
         return True
     except Exception:
         return False
+
 
 def remove_channel(channel_id: str) -> bool:
     try:
