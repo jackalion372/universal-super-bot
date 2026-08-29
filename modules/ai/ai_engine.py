@@ -1,8 +1,9 @@
 import os
 import io
-from pathlib import Path
+from PIL import Image
 from core.config import GEMINI_API_KEY, logger
 from core.database import save_ai_message, get_ai_history, clear_ai_history
+
 
 
 try:

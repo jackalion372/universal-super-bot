@@ -1,4 +1,4 @@
-﻿import os
+import os
 import asyncio
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
@@ -196,11 +196,11 @@ async def handle_broadcast_prompt(event: Message | CallbackQuery):
     else:
         await event.answer(msg_txt, parse_mode="Markdown")
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "admin_broadcast_mode")
-@router.message(F.photo, lambda msg: get_user_mode(msg.from_user.id) == "admin_broadcast_mode")
-@router.message(F.video, lambda msg: get_user_mode(msg.from_user.id) == "admin_broadcast_mode")
+@router.message(F.text | F.photo | F.video)
 async def handle_broadcast_execution(message: Message, bot: Bot):
     if not is_admin(message.from_user.id):
+        return
+    if get_user_mode(message.from_user.id) != "admin_broadcast_mode":
         return
         
     if message.text == "/cancel":
@@ -235,9 +235,11 @@ async def handle_broadcast_execution(message: Message, bot: Bot):
 
 # ==================== ADD CHANNEL INPUT HANDLER ====================
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "admin_add_channel_mode")
+@router.message(F.text)
 async def handle_channel_text(message: Message, bot: Bot):
     if not is_admin(message.from_user.id):
+        return
+    if get_user_mode(message.from_user.id) != "admin_add_channel_mode":
         return
         
     raw = message.text.strip()
@@ -272,9 +274,11 @@ async def handle_reply_user_callback(callback: CallbackQuery):
     await callback.message.answer(f"✍️ **Foydalanuvchiga (ID: `{target_id}`) javobingizni yozing:**", parse_mode="Markdown")
     await callback.answer()
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "admin_reply_user_mode")
+@router.message(F.text)
 async def handle_admin_reply_send(message: Message, bot: Bot):
     if not is_admin(message.from_user.id):
+        return
+    if get_user_mode(message.from_user.id) != "admin_reply_user_mode":
         return
         
     target_id = ADMIN_REPLY_TARGET.get(message.from_user.id)
@@ -295,3 +299,4 @@ async def handle_admin_reply_send(message: Message, bot: Bot):
         await message.answer(f"❌ Xabarni yetkazishda xatolik: {e}")
     finally:
         set_user_mode(message.from_user.id, "general")
+
