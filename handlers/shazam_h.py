@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 import asyncio
 from aiogram import Router, F, Bot
@@ -88,9 +88,13 @@ async def handle_shazam_media(message: Message, bot: Bot):
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "shazam")
+@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "shazam" or msg.text.startswith("/shazam"))
 async def handle_shazam_text_search(message: Message, bot: Bot):
-    query = message.text.strip()
+    query = message.text.replace("/shazam", "").strip()
+    if not query:
+        await message.answer("✍️ **Musiqa qidirish uchun qo'shiq nomi, ijrochi yoki qo'shiq matnini yuboring!**", parse_mode="Markdown")
+        return
+        
     status_msg = await message.answer(f"🔍 **'{query}' bo'yicha musiqa qidirilmoqda...**", parse_mode="Markdown")
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     
@@ -102,10 +106,11 @@ async def handle_shazam_text_search(message: Message, bot: Bot):
         
         mp3_file = FSInputFile(mp3_path)
         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_AUDIO)
-        await message.answer_audio(audio=mp3_file, caption=f"🎵 **{title}**\n\n🤖 @Mr_nafi_bot", performer=artist, title=title)
+        await message.answer_audio(audio=mp3_file, caption=f"🎵 **{title}**\n\n🤖 @Mr_nafi_bot orqali topildi", performer=artist, title=title)
         await status_msg.delete()
         if os.path.exists(mp3_path):
             os.remove(mp3_path)
         log_stat(message.from_user.id, "music_search", query)
     else:
         await status_msg.edit_text("❌ Hech qanday musiqa topilmadi.")
+
