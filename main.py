@@ -75,8 +75,9 @@ async def main():
     dp.include_router(student_h.router)
     dp.include_router(tools_h.router)
     dp.include_router(downloader_h.router)
-    dp.include_router(shazam_h.router)
     dp.include_router(ai_h.router)
+    dp.include_router(shazam_h.router)
+
 
 
     asyncio.create_task(periodic_cleanup())

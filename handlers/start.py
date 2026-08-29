@@ -207,9 +207,12 @@ async def menu_feedback(message: Message):
     )
     await message.answer(text, parse_mode="Markdown", reply_markup=get_cancel_keyboard())
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "feedback_mode")
+@router.message(F.text)
 async def handle_user_feedback_send(message: Message, bot: Bot):
+    if get_user_mode(message.from_user.id) != "feedback_mode":
+        return
     user = message.from_user
+
     user_text = message.text.strip()
     
     if user_text in ["🔙 Bosh menyu", "/cancel"]:

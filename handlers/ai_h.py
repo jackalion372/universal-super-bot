@@ -1,4 +1,4 @@
-﻿import os
+import os
 import asyncio
 import uuid
 from pathlib import Path
@@ -40,9 +40,12 @@ async def cmd_reset_ai(message: Message):
     clear_ai_history(message.from_user.id)
     await message.answer("🔄 **AI suhbat xotirasi tozalandi.** Yangi suhbatni toza boshlashingiz mumkin!")
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "ai")
+@router.message(F.text)
 async def handle_ai_text_chat(message: Message, bot: Bot):
     user_id = message.from_user.id
+    if get_user_mode(user_id) != "ai":
+        return
+        
     prompt = message.text.strip()
     
     if prompt.lower() in ["/reset", "tozalash", "xotirani tozalash"]:
@@ -50,7 +53,6 @@ async def handle_ai_text_chat(message: Message, bot: Bot):
         await message.answer("🔄 **AI xotirasi tozalandi!**")
         return
         
-    # Darhol typing yuboramiz
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     stop_event = asyncio.Event()
     typing_task = asyncio.create_task(typing_loop(bot, message.chat.id, stop_event))
@@ -70,9 +72,12 @@ async def handle_ai_text_chat(message: Message, bot: Bot):
         
     log_stat(user_id, "ai_chat", prompt[:30])
 
-@router.message(F.photo, lambda msg: get_user_mode(msg.from_user.id) == "ai")
+@router.message(F.photo)
 async def handle_ai_photo(message: Message, bot: Bot):
     user_id = message.from_user.id
+    if get_user_mode(user_id) != "ai":
+        return
+        
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     stop_event = asyncio.Event()
     typing_task = asyncio.create_task(typing_loop(bot, message.chat.id, stop_event))
@@ -102,10 +107,13 @@ async def handle_ai_photo(message: Message, bot: Bot):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-@router.message(F.document, lambda msg: get_user_mode(msg.from_user.id) == "ai")
+@router.message(F.document)
 async def handle_ai_document(message: Message, bot: Bot):
-    doc = message.document
     user_id = message.from_user.id
+    if get_user_mode(user_id) != "ai":
+        return
+        
+    doc = message.document
     ext = Path(doc.file_name).suffix.lower()
     
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
@@ -135,9 +143,12 @@ async def handle_ai_document(message: Message, bot: Bot):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-@router.message(F.voice, lambda msg: get_user_mode(msg.from_user.id) == "ai")
+@router.message(F.voice)
 async def handle_ai_voice(message: Message, bot: Bot):
     user_id = message.from_user.id
+    if get_user_mode(user_id) != "ai":
+        return
+        
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     stop_event = asyncio.Event()
     typing_task = asyncio.create_task(typing_loop(bot, message.chat.id, stop_event))
@@ -157,3 +168,4 @@ async def handle_ai_voice(message: Message, bot: Bot):
         await typing_task
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
