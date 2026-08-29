@@ -208,7 +208,7 @@ async def handle_tool_videos(message: Message, bot: Bot):
         if mode == "mode_compress":
             status = await message.answer("📦 **Video sifatini saqlab siqilmoqda...**", parse_mode="Markdown")
             temp_out = str(TEMP_DIR / f"comp_{uuid.uuid4().hex[:8]}.mp4")
-            if compress_video(temp_vid, temp_out):
+            if await compress_video(temp_vid, temp_out):
                 in_mb = round(os.path.getsize(temp_vid) / (1024*1024), 2)
                 out_mb = round(os.path.getsize(temp_out) / (1024*1024), 2)
                 vid_file = FSInputFile(temp_out)
@@ -216,6 +216,7 @@ async def handle_tool_videos(message: Message, bot: Bot):
                 await message.answer_video(video=vid_file, caption=f"✅ **Video siqildi:** {in_mb}MB ➡️ {out_mb}MB (Sifat saqlandi)")
                 os.remove(temp_out)
             await status.delete()
+
             
         elif mode == "mode_vid2note":
             status = await message.answer("⚡️ **Dumaloq Video Note tayyorlanmoqda... 0%** [░░░░░░░░░░]", parse_mode="Markdown")
@@ -249,10 +250,9 @@ async def handle_tool_videos(message: Message, bot: Bot):
 
 
         elif mode == "mode_vid2mp3":
-
             status = await message.answer("🎵 **Audio ajratib olinmoqda...**", parse_mode="Markdown")
             temp_audio = str(TEMP_DIR / f"audio_{uuid.uuid4().hex[:8]}.mp3")
-            if video_to_mp3(temp_vid, temp_audio):
+            if await video_to_mp3(temp_vid, temp_audio):
                 audio_file = FSInputFile(temp_audio)
                 await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_AUDIO)
                 await message.answer_audio(audio=audio_file, caption="🎵 **Videodan ajratilgan MP3 audio**")

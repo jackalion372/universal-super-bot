@@ -1,4 +1,4 @@
-﻿import os
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -44,7 +44,7 @@ def compress_image(input_path: str, output_path: str, quality: int = 50) -> bool
         logger.error(f"Compress image error: {e}")
         return False
 
-def compress_video(input_path: str, output_path: str) -> bool:
+async def compress_video(input_path: str, output_path: str) -> bool:
     try:
         cmd = [
             FFMPEG_EXE, "-y", "-i", input_path,
@@ -52,7 +52,8 @@ def compress_video(input_path: str, output_path: str) -> bool:
             "-acodec", "aac", "-b:a", "128k",
             output_path
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        await proc.wait()
         return os.path.exists(output_path) and os.path.getsize(output_path) > 0
     except Exception as e:
         logger.error(f"Video compress error: {e}")
@@ -65,15 +66,16 @@ Faqat rasmdagi matnni qaytaring, ortiqcha izohsiz.
 """
     return await analyze_image_with_ai(user_id, image_path, prompt)
 
-def video_to_mp3(video_path: str, audio_path: str) -> bool:
+async def video_to_mp3(video_path: str, audio_path: str) -> bool:
     try:
         cmd = [
             FFMPEG_EXE, "-y", "-i", video_path,
             "-vn", "-ar", "44100", "-ac", "2", "-b:a", "192k",
             audio_path
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        return os.path.exists(audio_path)
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        await proc.wait()
+        return os.path.exists(audio_path) and os.path.getsize(audio_path) > 0
     except Exception as e:
         logger.error(f"Video to MP3 error: {e}")
         return False
