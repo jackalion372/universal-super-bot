@@ -1,4 +1,4 @@
-﻿MASTER_STUDENT_PROMPT = """
+MASTER_STUDENT_PROMPT = """
 AKADEMIK TALABA YORDAMCHISI — MASTER PROMPT
 
 1. ROL:
@@ -46,7 +46,10 @@ Muallif, nashr sanasi, birlamchi manba va ilmiy maqomini tekshir. Aniq atributsi
 Har bir jumla ushbu savolga javob berishi kerak: "Bu jumla ishga real mazmun qo'shyaptimi?" Agar javob yo'q bo'lsa, uni olib tashla.
 """
 
+EUROPEAN_ACADEMIC_SYSTEM_PROMPT = MASTER_STUDENT_PROMPT
+
 def get_student_prompt(doc_type: str, topic: str, extra_notes: str = "") -> str:
+
     doc_titles = {
         "pres": "Taqdimot (PowerPoint Slayd Matni va Strukturasi)",
         "miq": "Mustaqil Ish (Academic Independent Research Paper)",
