@@ -93,19 +93,42 @@ async def handle_shazam_media(message: Message, bot: Bot):
             os.remove(temp_file_path)
 
 @router.message(Command("shazam"))
-async def handle_shazam_command(message: Message):
+async def handle_shazam_command(message: Message, bot: Bot):
     query = message.text.replace("/shazam", "").strip()
     if not query:
-        await message.answer("✍️ **Musiqa qidirish uchun qo'shiq nomi, ijrochi yoki qo'shiq matnini yuboring!**", parse_mode="Markdown")
+        await message.answer("✍️ **Musiqa qidirish uchun qo'shiq nomi yuboring!\nMasalan: /shazam Muhabbat**", parse_mode="Markdown")
         return
+
+    status_msg = await message.answer(f"🔍 **'{query}' qidirilmoqda...**", parse_mode="Markdown")
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+    
+    res = await search_and_download_music(query)
+    if res.get("success"):
+        mp3_path = res["file_path"]
+        title = res.get("title", query)
+        artist = res.get("artist", "Artist")
+        mp3_file = FSInputFile(mp3_path)
+        await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_AUDIO)
+        await message.answer_audio(
+            audio=mp3_file,
+            caption=f"🎵 **{title}**\n\n🤖 @Mr_nafi_bot orqali topildi",
+            performer=artist,
+            title=title
+        )
+        await status_msg.delete()
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+        log_stat(message.from_user.id, "music_search", query)
+    else:
+        await status_msg.edit_text("❌ Hech qanday musiqa topilmadi.")
 
 @router.message(F.text)
 async def handle_shazam_text_search(message: Message, bot: Bot):
     user_mode = get_user_mode(message.from_user.id)
-    if user_mode != "shazam" and not message.text.startswith("/shazam"):
+    if user_mode != "shazam":
         return
 
-    query = message.text.replace("/shazam", "").strip()
+    query = message.text.strip()
     if not query:
         await message.answer("✍️ **Musiqa qidirish uchun qo'shiq nomi, ijrochi yoki qo'shiq matnini yuboring!**", parse_mode="Markdown")
         return
@@ -128,5 +151,6 @@ async def handle_shazam_text_search(message: Message, bot: Bot):
         log_stat(message.from_user.id, "music_search", query)
     else:
         await status_msg.edit_text("❌ Hech qanday musiqa topilmadi.")
+
 
 
