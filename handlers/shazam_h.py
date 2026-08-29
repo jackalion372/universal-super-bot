@@ -2,6 +2,8 @@ import os
 import uuid
 import asyncio
 from aiogram import Router, F, Bot
+from aiogram.filters import Command
+
 from aiogram.enums import ChatAction
 from aiogram.types import Message, FSInputFile
 from modules.shazam.shazam_service import recognize_song_from_file, search_and_download_music
@@ -90,8 +92,19 @@ async def handle_shazam_media(message: Message, bot: Bot):
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-@router.message(F.text, lambda msg: get_user_mode(msg.from_user.id) == "shazam" or msg.text.startswith("/shazam"))
+@router.message(Command("shazam"))
+async def handle_shazam_command(message: Message):
+    query = message.text.replace("/shazam", "").strip()
+    if not query:
+        await message.answer("✍️ **Musiqa qidirish uchun qo'shiq nomi, ijrochi yoki qo'shiq matnini yuboring!**", parse_mode="Markdown")
+        return
+
+@router.message(F.text)
 async def handle_shazam_text_search(message: Message, bot: Bot):
+    user_mode = get_user_mode(message.from_user.id)
+    if user_mode != "shazam" and not message.text.startswith("/shazam"):
+        return
+
     query = message.text.replace("/shazam", "").strip()
     if not query:
         await message.answer("✍️ **Musiqa qidirish uchun qo'shiq nomi, ijrochi yoki qo'shiq matnini yuboring!**", parse_mode="Markdown")
@@ -115,4 +128,5 @@ async def handle_shazam_text_search(message: Message, bot: Bot):
         log_stat(message.from_user.id, "music_search", query)
     else:
         await status_msg.edit_text("❌ Hech qanday musiqa topilmadi.")
+
 
