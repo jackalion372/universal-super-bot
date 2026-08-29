@@ -44,7 +44,13 @@ async def recognize_song_from_file(file_path: str) -> dict:
             "-vn", "-ar", "44100", "-ac", "2", "-b:a", "128k",
             converted_path
         ]
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        await proc.wait()
+
         
         target_audio = converted_path if os.path.exists(converted_path) else file_path
         if not shazam:
