@@ -13,7 +13,8 @@ from modules.media_tools.media_service import remove_background, compress_image,
 from modules.converters.converter_service import images_to_pdf, image_to_single_pdf, create_zip_archive, extract_zip_archive
 from modules.text_tools.text_service import latin_to_cyrillic, cyrillic_to_latin, text_to_speech, smart_translate, check_grammar
 from modules.utility_tools.utility_service import generate_qr_code, read_qr_code, get_cbu_currency_rates
-from modules.tools.video_note_service import convert_video_to_round_note_with_progress
+from modules.tools.video_note_service import convert_video_to_round_note_with_progress, get_video_duration
+
 
 from keyboards.main_kb import get_cancel_keyboard, get_main_menu_keyboard
 from keyboards.inline_kb import get_translator_lang_keyboard, get_pdf_type_keyboard
@@ -229,7 +230,12 @@ async def handle_tool_videos(message: Message, bot: Bot):
 
             
         elif mode == "mode_vid2note":
+            duration = get_video_duration(temp_vid)
+            if duration > 60:
+                await message.answer("⚠️ **Video 60 soniyadan uzun.** Telegram cheklovi tufayli faqat birinchi 60 soniyasi dumaloq qilinadi.", parse_mode="Markdown")
+                
             status = await message.answer("⚡️ **Dumaloq Video Note tayyorlanmoqda... 0%** [░░░░░░░░░░]", parse_mode="Markdown")
+
             
             async def update_progress(pct: int):
                 filled = pct // 10

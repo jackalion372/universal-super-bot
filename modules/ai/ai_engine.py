@@ -65,10 +65,27 @@ async def ask_gemini_chat(user_id: int, prompt: str) -> str:
         reply_text = response.text
         save_ai_message(user_id, "user", prompt)
         save_ai_message(user_id, "model", reply_text)
-        return reply_text
     except Exception as e:
         logger.error(f"Gemini Chat error: {e}")
         return f"⚠️ AI xatolik: {str(e)}"
+
+async def ask_gemini_once(prompt: str) -> str:
+
+    """1 martalik tarixsiz AI so'rovi (Student materiallari uchun)"""
+    try:
+        if not GEMINI_API_KEY:
+            return "⚠️ Gemini API kaliti topilmadi."
+        try:
+            model = get_gemini_model("gemini-3.6-flash")
+            response = model.generate_content(prompt)
+        except Exception:
+            model = get_gemini_model("gemini-3.7-flash")
+            response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        logger.error(f"Gemini Once error: {e}")
+        return f"⚠️ AI xatolik: {str(e)}"
+
 
 async def analyze_image_with_ai(user_id: int, image_path: str, prompt: str = "") -> str:
     try:

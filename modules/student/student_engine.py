@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import asyncio
 from pathlib import Path
@@ -18,7 +18,7 @@ except ImportError:
     pptx = None
 
 from core.config import TEMP_DIR, logger
-from modules.ai.ai_engine import ask_gemini_chat
+from modules.ai.ai_engine import ask_gemini_once
 from modules.student.academic_prompts import EUROPEAN_ACADEMIC_SYSTEM_PROMPT, get_student_prompt
 
 async def generate_student_material(user_id: int, doc_type: str, topic: str, extra_notes: str = "") -> dict:
@@ -27,8 +27,9 @@ async def generate_student_material(user_id: int, doc_type: str, topic: str, ext
     """
     prompt = get_student_prompt(doc_type, topic, extra_notes)
     
-    # Gemini AI yordamida ilmiy matn yaratish
-    raw_content = await ask_gemini_chat(user_id, prompt)
+    # Gemini AI yordamida ilmiy matn yaratish (1 martalik tarixsiz)
+    raw_content = await ask_gemini_once(prompt)
+
     
     # Keraksiz AI belgilari va vizual shox-shabbalarni tozalash
     cleaned_content = re.sub(r"---|\*\*\*|===", "", raw_content).strip()
