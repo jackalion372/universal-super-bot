@@ -4,17 +4,19 @@ from core.config import ADMIN_IDS
 def get_main_menu_keyboard(user_id: int = 0):
     keyboard = [
         [
-            KeyboardButton(text="🎓 Student Studiyasi")
+            KeyboardButton(text="📥 Media Yuklash"),
+            KeyboardButton(text="🎵 Shazam & Musiqa")
         ],
         [
-            KeyboardButton(text="📥 Media Studiya"),
-            KeyboardButton(text="🧠 AI Studiya")
+            KeyboardButton(text="🧠 AI Yordamchi"),
+            KeyboardButton(text="🎨 Rasm Vositalari")
         ],
         [
-            KeyboardButton(text="📄 Hujjat & PDF Studiyasi"),
-            KeyboardButton(text="🎨 Rasm, Matn & Utilitlar")
+            KeyboardButton(text="📄 Fayl & PDF"),
+            KeyboardButton(text="✍️ Matn & Til")
         ],
         [
+            KeyboardButton(text="🛠 Kundalik Asboblar"),
             KeyboardButton(text="📩 Adminga Murojaat")
         ]
     ]
