@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import asyncio
 import uuid
@@ -56,11 +56,18 @@ async def fast_download_media(url: str, extract_audio: bool = False) -> dict:
 def _sync_fast_download(url: str, extract_audio: bool = False) -> dict:
     platform = detect_platform(url)
     
-    # 1. TikTok Engine
+    # 1. TikTok Engine (3 API Fallback Chain: TikWM -> SSSTik -> MusicalDown)
     if platform == "tiktok":
         res = _fetch_tiktok_tikwm(url, extract_audio)
         if res.get("success"):
             return res
+        res_ssstik = _fetch_tiktok_ssstik(url, extract_audio)
+        if res_ssstik.get("success"):
+            return res_ssstik
+        res_musical = _fetch_tiktok_musicaldown(url, extract_audio)
+        if res_musical.get("success"):
+            return res_musical
+
 
     # 2. Instagram Engine (100% Ultra HD Karusel & Photo Post Extraction)
     if platform == "instagram":
@@ -135,9 +142,68 @@ def _fetch_tiktok_tikwm(url: str, extract_audio: bool) -> dict:
                         "is_image": False,
                         "platform": "tiktok"
                     }
-    except Exception as e:
-        logger.warning(f"Tikwm error: {e}")
     return {"success": False}
+
+def _fetch_tiktok_ssstik(url: str, extract_audio: bool) -> dict:
+    try:
+        api_url = "https://ssstik.io/abc?url=dl"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        }
+        data = {"id": url, "locale": "en", "tt": "0"}
+        resp = requests.post(api_url, headers=headers, data=data, timeout=4)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            download_links = soup.find_all('a', class_='download_link')
+            for link in download_links:
+                href = link.get('href')
+                if href and ("tikcdn" in href or "ssstik" in href or href.startswith("http")):
+                    return {
+                        "success": True,
+                        "direct_url": href,
+                        "title": "TikTok HD Video",
+                        "is_audio": False,
+                        "is_image": False,
+                        "platform": "tiktok"
+                    }
+    except Exception as e:
+        logger.warning(f"SSSTik error: {e}")
+    return {"success": False}
+
+def _fetch_tiktok_musicaldown(url: str, extract_audio: bool) -> dict:
+    try:
+        session = requests.Session()
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        r1 = session.get("https://musicaldown.com/en", headers=headers, timeout=4)
+        if r1.status_code == 200:
+            soup = BeautifulSoup(r1.text, 'html.parser')
+            inputs = soup.find_all('input')
+            data = {}
+            for inp in inputs:
+                if inp.get('name'):
+                    data[inp.get('name')] = inp.get('value', '')
+            data['url_name'] = url
+            
+            r2 = session.post("https://musicaldown.com/download", headers=headers, data=data, timeout=4)
+            if r2.status_code == 200:
+                soup2 = BeautifulSoup(r2.text, 'html.parser')
+                links = soup2.find_all('a', class_='download')
+                for l in links:
+                    href = l.get('href')
+                    if href and href.startswith("http"):
+                        return {
+                            "success": True,
+                            "direct_url": href,
+                            "title": "TikTok HD Video",
+                            "is_audio": False,
+                            "is_image": False,
+                            "platform": "tiktok"
+                        }
+    except Exception as e:
+        logger.warning(f"Musicaldown error: {e}")
+    return {"success": False}
+
 
 def _fetch_instagram_fast(url: str, extract_audio: bool) -> dict:
     """Instagram Karusel (?img_index=X bo'lsa ham) va barcha rasmlarni 1080p HD va kesmasdan yuklash engine"""
