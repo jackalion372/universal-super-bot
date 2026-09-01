@@ -20,6 +20,8 @@ ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.strip().isdig
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 
+
+
 # Limitlar
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
 AUTO_CLEANUP_MINUTES = int(os.getenv("AUTO_CLEANUP_MINUTES", "30"))
