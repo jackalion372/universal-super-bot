@@ -3,24 +3,23 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 def get_media_tools_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✂️ Fonni o'chirish (PNG)", callback_data="tool_rembg"),
-            InlineKeyboardButton(text="📝 OCR (Yozuvni matnga)", callback_data="tool_ocr")
+            InlineKeyboardButton(text="✂️ Fonni O'chirish (PNG)", callback_data="tool_rembg"),
+            InlineKeyboardButton(text="📝 OCR Matn Ajratish", callback_data="tool_ocr")
         ],
         [
-            InlineKeyboardButton(text="🎥 ➡️ ⭕️ Videoni Dumaloq qilish", callback_data="tool_vid2note"),
-            InlineKeyboardButton(text="🎥 Video -> MP3", callback_data="tool_vid2mp3")
+            InlineKeyboardButton(text="⭕️ Video ➡️ Dumaloq Note", callback_data="tool_vid2note"),
+            InlineKeyboardButton(text="🎵 Video ➡️ MP3 Audio", callback_data="tool_vid2mp3")
         ],
         [
             InlineKeyboardButton(text="📦 Rasm / Video Siqish", callback_data="tool_compress")
         ]
     ])
 
-
 def get_file_tools_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🖼 ➡️ 📄 Rasm -> PDF", callback_data="tool_img2pdf"),
-            InlineKeyboardButton(text="📦 ZIP Arxiv Yaratish / Ochish", callback_data="tool_zip")
+            InlineKeyboardButton(text="🖼 Rasm ➡️ PDF Hujjat", callback_data="tool_img2pdf"),
+            InlineKeyboardButton(text="📦 ZIP Arxiv Yaratish", callback_data="tool_zip")
         ]
     ])
 
@@ -43,22 +42,22 @@ def get_text_tools_keyboard():
             InlineKeyboardButton(text="🌐 Aqlli Tarjimon", callback_data="tool_trans")
         ],
         [
-            InlineKeyboardButton(text="🖋 Imlo & Grammatika", callback_data="tool_gram")
+            InlineKeyboardButton(text="🖋 Imlo va Grammatika", callback_data="tool_gram")
         ]
     ])
 
 def get_translator_lang_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🇺🇿 O'zbek tiliga", callback_data="trans_uz"),
-            InlineKeyboardButton(text="🇷🇺 Rus tiliga", callback_data="trans_ru")
+            InlineKeyboardButton(text="🇺🇿 O'zbek Tiliga", callback_data="trans_uz"),
+            InlineKeyboardButton(text="🇷🇺 Rus Tiliga", callback_data="trans_ru")
         ],
         [
-            InlineKeyboardButton(text="🇬🇧 Ingliz tiliga", callback_data="trans_en"),
-            InlineKeyboardButton(text="🇹🇷 Turk tiliga", callback_data="trans_tr")
+            InlineKeyboardButton(text="🇬🇧 Ingliz Tiliga", callback_data="trans_en"),
+            InlineKeyboardButton(text="🇹🇷 Turk Tiliga", callback_data="trans_tr")
         ],
         [
-            InlineKeyboardButton(text="🇸🇦 Arab tiliga", callback_data="trans_ar")
+            InlineKeyboardButton(text="🇸🇦 Arab Tiliga", callback_data="trans_ar")
         ]
     ])
 

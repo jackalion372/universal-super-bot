@@ -23,7 +23,6 @@ def get_main_menu_keyboard(user_id: int = 0):
             KeyboardButton(text="📩 Adminga Murojaat")
         ]
     ]
-
     
     if user_id in ADMIN_IDS:
         keyboard.append([KeyboardButton(text="👑 Admin Panel")])
